@@ -1,0 +1,59 @@
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Sizes */
+.status-badge--sm {
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
+.status-badge--md {
+  font-size: 13px;
+  padding: 5px 14px;
+}
+
+/* Status colors — matching the site's existing color palette */
+.status-badge--pending {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
+
+.status-badge--matched {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+.status-badge--verified {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.status-badge--rejected {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.status-badge--returned {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Legacy status names (backward compat with old DB docs) */
+.status-badge--open {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
+
+.status-badge--resolved {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}

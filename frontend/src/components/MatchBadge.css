@@ -1,0 +1,37 @@
+.match-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 10px;
+  min-width: 90px;
+  font-weight: 600;
+}
+
+.match-badge__score {
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.match-badge__status {
+  font-size: 12px;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.match-badge--high {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.match-badge--possible {
+  background-color: #fef9c3;
+  color: #a16207;
+}
+
+.match-badge--none {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}

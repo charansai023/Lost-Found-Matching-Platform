@@ -1,0 +1,67 @@
+.complete-profile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(17, 24, 39, 0.8);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.complete-profile-card {
+  background: #ffffff;
+  padding: 32px;
+  border-radius: 16px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  border: 1px solid #f3f4f6;
+  animation: modalEnter 0.3s ease-out;
+}
+
+.complete-profile-card h2 {
+  font-size: 24px;
+  color: #111827;
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.complete-profile-card p {
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.complete-profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.complete-profile-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.complete-profile-actions .btn {
+  flex: 1;
+}
+
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
