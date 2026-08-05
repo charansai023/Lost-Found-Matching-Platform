@@ -1,0 +1,142 @@
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 32px;
+  background-color: #111827;
+  color: #ffffff;
+}
+
+.navbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.navbar__logo {
+  height: 32px;
+  width: 32px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.navbar__links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.navbar__links a {
+  color: #d1d5db;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.navbar__links a:hover {
+  color: #ffffff;
+}
+
+.navbar__user {
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.navbar__admin-link {
+  background-color: #eab308;
+  color: #111827 !important;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Mobile toggle button */
+.navbar__toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 20px;
+  height: 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  z-index: 100;
+}
+
+.navbar__toggle .bar {
+  height: 2px;
+  width: 100%;
+  background-color: #ffffff;
+  border-radius: 2px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.navbar__toggle.active .bar:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.navbar__toggle.active .bar:nth-child(2) {
+  opacity: 0;
+}
+
+.navbar__toggle.active .bar:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+@media (max-width: 992px) {
+  .navbar {
+    padding: 14px 24px;
+    position: relative;
+  }
+
+  .navbar__toggle {
+    display: flex;
+  }
+
+  .navbar__links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background-color: #111827;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 24px;
+    gap: 16px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    z-index: 99;
+    border-top: 1px solid #1f2937;
+  }
+
+  .navbar__links--open {
+    display: flex;
+  }
+
+  .navbar__links a,
+  .navbar__user {
+    font-size: 15px;
+    padding: 8px 0;
+    border-bottom: 1px solid #1f2937;
+    width: 100%;
+    display: block;
+  }
+
+  .navbar__admin-link {
+    width: max-content;
+    margin: 4px 0;
+    border-bottom: none !important;
+  }
+
+  .navbar__links .btn {
+    width: 100%;
+    margin-top: 8px;
+  }
+}

@@ -1,0 +1,56 @@
+.match-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 10px;
+  min-width: 110px;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.match-badge__score {
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.match-badge__status {
+  font-size: 11px;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.match-badge--ai {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.match-badge__ai-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.match-badge--high {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.match-badge--possible {
+  background-color: #fef9c3;
+  color: #a16207;
+}
+
+.match-badge--none {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}

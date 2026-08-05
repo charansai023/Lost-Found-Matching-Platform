@@ -1,0 +1,144 @@
+.report-page {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.report-page h1 {
+  color: #111827;
+  margin-bottom: 6px;
+}
+
+.report-page__subtitle {
+  color: #6b7280;
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+
+.report-form {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Public / Private section dividers */
+.report-section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #f9fafb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 4px 0 20px 0;
+  border-left: 4px solid #facc15;
+}
+
+.report-section-header--private {
+  background: #fef9c3;
+  border-left-color: #eab308;
+  margin-top: 24px;
+}
+
+.report-section-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.report-section-header h3 {
+  margin: 0 0 2px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.report-section-header--private h3 {
+  color: #854d0e;
+}
+
+.report-section-header p {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.report-section-header--private p {
+  color: #713f12;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-submit {
+  margin-top: 20px;
+}
+
+.form-file-input {
+  margin-bottom: 16px;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 16px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  box-sizing: border-box;
+}
+
+.form-textarea--private {
+  background-color: #fefce8;
+  border-color: #fde047;
+}
+
+.form-textarea--private:focus {
+  border-color: #eab308;
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.2);
+}
+
+.form-required {
+  color: #b91c1c;
+  margin-left: 2px;
+}
+
+.form-optional {
+  color: #9ca3af;
+  font-weight: 400;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+/* Auth error */
+.auth-error {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 600px) {
+  .report-page {
+    padding: 24px 16px;
+  }
+
+  .report-form {
+    padding: 20px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
