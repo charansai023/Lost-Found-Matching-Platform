@@ -41,6 +41,19 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  rewardPoints: {
+    type: Number,
+    default: 0,
+  },
+  itemsReturned: {
+    type: Number,
+    default: 0,
+  },
+  rewardLevel: {
+    type: String,
+    enum: ['Bronze Helper', 'Silver Helper', 'Gold Helper', 'Platinum Helper', 'Campus Legend'],
+    default: 'Bronze Helper',
+  },
   createdAt: {
     type: Date,
     default: Date.now,

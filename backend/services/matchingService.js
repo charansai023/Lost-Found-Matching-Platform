@@ -263,6 +263,13 @@ const calculateHybridMatchScore = async (lostItem, foundItem) => {
   // Smart Category Validation & Caps (Requirement 6 & 7)
   let finalConfidenceScore = rawScore;
 
+  if (!lostItem.image || !foundItem.image) {
+    if (finalConfidenceScore > 85) {
+      logs.push(`[Hybrid Engine] Missing image cap: Capped from ${finalConfidenceScore}% down to 85%.`);
+      finalConfidenceScore = 85;
+    }
+  }
+
   if (categoryScore === 0) {
     if (!sameObjectCategory) {
       const MAX_UNRELATED_CAP = 30;
@@ -293,7 +300,7 @@ const calculateHybridMatchScore = async (lostItem, foundItem) => {
     }
   }
 
-  finalConfidenceScore = Math.min(100, Math.max(0, finalConfidenceScore));
+  finalConfidenceScore = Math.min(99, Math.max(0, finalConfidenceScore));
   const matchLevel = getMatchLevel(finalConfidenceScore);
   const threshold = getMatchThreshold();
   const isAiMatch = finalConfidenceScore >= threshold || (imageSimilarityScore >= 80 && categoryScore >= 70);

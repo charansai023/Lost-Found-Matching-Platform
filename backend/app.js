@@ -10,6 +10,8 @@ const myRoutes = require('./routes/myRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const claimRoutes = require('./routes/claimRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const rewardRoutes = require('./routes/rewardRoutes');
+const adminRewardRoutes = require('./routes/adminRewardRoutes');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
 const app = express();
@@ -54,6 +56,8 @@ app.use('/api/my', myRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/claims', claimRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/rewards', rewardRoutes);
+app.use('/api/admin/rewards', adminRewardRoutes);
 
 // --- Error Handling (must be registered last) ---
 app.use(notFound);

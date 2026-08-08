@@ -9,6 +9,7 @@ import useAuth from './hooks/useAuth';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
 import ReportLostItem from './pages/ReportLostItem';
 import ReportFoundItem from './pages/ReportFoundItem';
 import LostItemsList from './pages/LostItemsList';
@@ -18,6 +19,11 @@ import FoundItemDetail from './pages/FoundItemDetail';
 import MyReports from './pages/MyReports';
 import Profile from './pages/Profile';
 import AdminDashboard from './pages/AdminDashboard';
+import RewardsDashboard from './pages/Student/Rewards/RewardsDashboard';
+import Leaderboard from './pages/Student/Rewards/Leaderboard';
+import RedeemRewards from './pages/Student/Rewards/RedeemRewards';
+import RewardSettings from './pages/Admin/Rewards/RewardSettings';
+import RedemptionRequests from './pages/Admin/Rewards/RedemptionRequests';
 
 function AppContent() {
   const location = useLocation();
@@ -25,6 +31,7 @@ function AppContent() {
 
   // Show the profile completion modal if the user hasn't completed their profile yet
   const showCompleteProfile = isAuthenticated && user && !user.profileCompleted;
+  const isAdminRoute = location.pathname.startsWith('/admin');
 
   return (
     <>
@@ -39,6 +46,7 @@ function AppContent() {
               <Route path="/" element={<Home />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
 
               {/* ── User Routes ── */}
               <Route
@@ -105,6 +113,30 @@ function AppContent() {
                   </PrivateRoute>
                 }
               />
+              <Route
+                path="/student/rewards"
+                element={
+                  <PrivateRoute>
+                    <RewardsDashboard />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/student/rewards/leaderboard"
+                element={
+                  <PrivateRoute>
+                    <Leaderboard />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/student/rewards/redeem"
+                element={
+                  <PrivateRoute>
+                    <RedeemRewards />
+                  </PrivateRoute>
+                }
+              />
 
               {/* ── Admin Routes (all nested under /admin/*) ── */}
               <Route
@@ -168,6 +200,22 @@ function AppContent() {
                 element={
                   <AdminRoute>
                     <AdminDashboard />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/rewards/settings"
+                element={
+                  <AdminRoute>
+                    <RewardSettings />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/rewards/requests"
+                element={
+                  <AdminRoute>
+                    <RedemptionRequests />
                   </AdminRoute>
                 }
               />

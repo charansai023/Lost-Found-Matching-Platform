@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getMyLostItems, getMyFoundItems } from '../services/myService';
+import rewardService from '../services/rewardService';
 import useAuth from '../hooks/useAuth';
 import Loader from '../components/Loader';
 import './Profile.css';
@@ -8,6 +9,7 @@ const Profile = () => {
   const { user, updateProfile } = useAuth();
   const [myLostCount, setMyLostCount] = useState(0);
   const [myFoundCount, setMyFoundCount] = useState(0);
+  const [rewardInfo, setRewardInfo] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -19,9 +21,16 @@ const Profile = () => {
   useEffect(() => {
     const loadCounts = async () => {
       try {
-        const [lostResult, foundResult] = await Promise.all([getMyLostItems(), getMyFoundItems()]);
+        const [lostResult, foundResult, rewardResult] = await Promise.all([
+          getMyLostItems(), 
+          getMyFoundItems(),
+          rewardService.getMyRewards().catch(() => ({ data: null }))
+        ]);
         setMyLostCount(lostResult.data.lostItems.length);
         setMyFoundCount(foundResult.data.foundItems.length);
+        if (rewardResult.data) {
+          setRewardInfo(rewardResult.data);
+        }
       } finally {
         setLoading(false);
       }
@@ -84,7 +93,14 @@ const Profile = () => {
           <>
             <h1>{user?.name}</h1>
             <p className="profile-card__email">{user?.email}</p>
-            {user?.role === 'admin' && <span className="role-badge role-badge--admin">admin</span>}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px' }}>
+              {user?.role === 'admin' && <span className="role-badge role-badge--admin">admin</span>}
+              {rewardInfo && (
+                <span className="role-badge" style={{ background: '#f59e0b', color: 'white' }}>
+                  {rewardInfo.rewardLevel} ({rewardInfo.rewardPoints} pts)
+                </span>
+              )}
+            </div>
             <button className="btn btn--secondary profile-card__edit-btn" onClick={() => setIsEditing(true)}>
               Edit Name
             </button>

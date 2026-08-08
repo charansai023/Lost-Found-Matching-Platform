@@ -8,6 +8,7 @@ const { findMatchesForFoundItem, calculateMatchScore, MATCH_THRESHOLDS } = requi
 const { runAsyncMatching } = require('../services/asyncMatchingQueue');
 const { getSearchQuerySynonyms } = require('../services/textEmbeddingService');
 const { createAndSendNotification } = require('../services/socketService');
+const { sendFoundItemReportedEmail } = require('../utils/emailService');
 
 // @desc    Create a new found item report and automatically run matching
 // @route   POST /api/found
@@ -88,6 +89,23 @@ const createFoundItem = asyncHandler(async (req, res) => {
     itemModel: 'FoundItem',
     priority: 'medium',
   }).catch((e) => console.error('[Notification] Error on new found report:', e.message));
+
+  // Send confirmation email to the reporter (non-blocking, fire-and-forget)
+  sendFoundItemReportedEmail({
+    userEmail: req.user.email,
+    userName: req.user.name,
+    itemTitle: foundItem.itemType || foundItem.category,
+    itemId: foundItem._id.toString(),
+    itemLocation: foundItem.location,
+    date: foundItem.dateFound,
+  }).catch((emailErr) => {
+    console.error('[FoundItem] Failed to send found-item-reported email:', {
+      to: req.user.email,
+      itemId: foundItem._id,
+      code: emailErr.code,
+      message: emailErr.message,
+    });
+  });
 
   sendSuccess(res, 201, 'Found item created successfully', {
     foundItem,
