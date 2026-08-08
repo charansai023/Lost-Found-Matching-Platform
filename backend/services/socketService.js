@@ -12,11 +12,20 @@ const initSocket = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
       origin: (origin, callback) => {
-        if (!origin || /^http:\/\/localhost(:\d+)?$/.test(origin) || origin === process.env.CLIENT_URL) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
+        if (!origin || /^http:\/\/localhost(:\d+)?$/.test(origin)) {
+          return callback(null, true);
         }
+
+        const clientUrls = (process.env.CLIENT_URL || '')
+          .split(',')
+          .map((url) => url.trim())
+          .filter(Boolean);
+
+        if (clientUrls.includes(origin) || /\.vercel\.app$/.test(origin)) {
+          return callback(null, true);
+        }
+
+        callback(new Error('Not allowed by CORS'));
       },
       credentials: true,
       methods: ['GET', 'POST', 'PATCH', 'DELETE'],

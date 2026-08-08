@@ -18,18 +18,25 @@ const app = express();
 
 // --- Global Middleware ---
 
-// Allow requests from our frontend (any localhost port for dev)
+// Allow requests from our frontend (localhost, configured CLIENT_URL, or Vercel preview domains)
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl) or any localhost port
+      // Allow requests with no origin (e.g. mobile apps, curl, Postman) or any localhost port
       if (!origin || /^http:\/\/localhost(:\d+)?$/.test(origin)) {
-        callback(null, true);
-      } else if (origin === (process.env.CLIENT_URL || '')) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+        return callback(null, true);
       }
+
+      const clientUrls = (process.env.CLIENT_URL || '')
+        .split(',')
+        .map((url) => url.trim())
+        .filter(Boolean);
+
+      if (clientUrls.includes(origin) || /\.vercel\.app$/.test(origin)) {
+        return callback(null, true);
+      }
+
+      callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
   })
