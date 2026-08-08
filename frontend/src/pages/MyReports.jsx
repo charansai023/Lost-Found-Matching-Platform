@@ -115,10 +115,14 @@ const MyReports = () => {
                     <p className="my-report-card__meta">
                       <strong>Found At:</strong> {claim.foundItem?.location || '—'}
                     </p>
-                    {claim.lostItem && (
+                    {claim.lostItem ? (
                       <p className="my-report-card__meta">
                         <strong>Your Lost Item:</strong>{' '}
                         {claim.lostItem.itemType || claim.lostItem.category}
+                      </p>
+                    ) : (
+                      <p className="my-report-card__meta">
+                        <strong>Claim Type:</strong> Direct Claim
                       </p>
                     )}
                     <p className="my-report-card__meta">

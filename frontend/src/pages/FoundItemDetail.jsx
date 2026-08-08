@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getFoundItemById } from '../services/foundItemService';
+import { getMyClaims } from '../services/claimService';
 import StatusBadge from '../components/StatusBadge';
 import Loader from '../components/Loader';
 import ClaimModal from '../components/ClaimModal';
@@ -15,12 +16,22 @@ const FoundItemDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [userClaim, setUserClaim] = useState(null);
 
   useEffect(() => {
     const fetchItem = async () => {
       try {
         const result = await getFoundItemById(id);
         setItem(result.data.foundItem);
+        const claimResult = await getMyClaims();
+        if (claimResult?.data?.claims) {
+          const matchingClaim = claimResult.data.claims.find(c => 
+            c.foundItem?._id === id || c.foundItem === id
+          );
+          if (matchingClaim) {
+            setUserClaim(matchingClaim);
+          }
+        }
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to load item details.');
       } finally {
@@ -122,12 +133,34 @@ const FoundItemDetail = () => {
               <strong>Is this your item?</strong>
               <p>Click below to submit an ownership claim. Provide unique details that prove this belongs to you. Admin will review your claim.</p>
             </div>
-            <button
-              className="btn btn--primary item-detail__action-btn"
-              onClick={() => setShowModal(true)}
-            >
-              ✋ This Is My Item
-            </button>
+            {item.status === 'Pending' || item.status === 'Matched' ? (
+              userClaim ? (
+                 <button className="btn btn--secondary item-detail__action-btn" disabled>
+                   {userClaim.status === 'pending' ? 'Claim Pending' : userClaim.status === 'verified' ? '✓ Claim Approved' : 'Claim Submitted'}
+                 </button>
+              ) : (
+                <button
+                  className="btn btn--primary item-detail__action-btn"
+                  onClick={() => setShowModal(true)}
+                >
+                  ✋ This Is My Item
+                </button>
+              )
+            ) : item.status === 'Verified' ? (
+              userClaim && userClaim.status === 'verified' ? (
+                <button className="btn btn--success item-detail__action-btn" disabled>
+                   ✓ Your Claim Is Verified
+                </button>
+              ) : (
+                <button className="btn btn--secondary item-detail__action-btn" disabled>
+                   Item Already Claimed
+                </button>
+              )
+            ) : item.status === 'Returned' ? (
+               <button className="btn btn--secondary item-detail__action-btn" disabled>
+                 Item Returned
+               </button>
+            ) : null}
           </div>
         </div>
       </div>

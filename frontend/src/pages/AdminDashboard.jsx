@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   getPlatformStats,
   getAllUsersAdmin,
@@ -30,152 +30,402 @@ const imageUrl = (path) => (path ? `${API_ORIGIN}${path}` : null);
 // Sub-pages rendered inside the admin layout
 // ─────────────────────────────────────────────
 
-const Overview = ({ stats }) => {
+const Overview = ({ stats, matches, lostItems, foundItems, claims, onVerify, onReject, onMarkReturned, onVerifyClaim, onRejectClaim, onDeleteLost, onDeleteFound }) => {
+  const navigate = useNavigate();
   if (!stats) return <Loader />;
-  const cards = [
-    { label: 'Total Users', value: stats.totalUsers, icon: '👥' },
-    { label: 'Lost Reports', value: stats.totalLost, icon: '🔍' },
-    { label: 'Found Reports', value: stats.totalFound, icon: '📦' },
-    { label: 'Total Matches', value: stats.totalMatches, icon: '🔗' },
-    { label: 'Pending Matches', value: stats.pendingMatches, icon: '⏳', highlight: true },
-    { label: 'Verified Matches', value: stats.verifiedMatches, icon: '✅' },
-    { label: 'Items Returned', value: stats.returnedMatches, icon: '🏠' },
-    { label: 'High Confidence', value: stats.highMatches, icon: '⭐', highlight: true },
-    { label: 'AI Image Matches', value: stats.aiMatches || 0, icon: '✨', highlight: true },
-  ];
+
+  // Calculate AI stats from matches
+  const aiMatchesList = matches.filter(m => m.isAiMatch || m.matchingMethod === 'Hybrid AI Engine');
+  const imageMatches = aiMatchesList.filter(m => m.imageSimilarityScore > 0).length;
+  const textMatches = aiMatchesList.filter(m => m.descriptionSimilarity > 0 || m.textScore > 0).length;
+  const semanticMatches = aiMatchesList.filter(m => m.semanticSimilarity > 0 || m.overallTextSimilarity > 0).length;
+  const avgConfidence = aiMatchesList.length > 0 
+    ? Math.round(aiMatchesList.reduce((acc, m) => acc + (m.score || 0), 0) / aiMatchesList.length)
+    : 0;
+
+  const recoveryRate = stats.totalLost > 0 ? Math.round((stats.returnedMatches / stats.totalLost) * 100) : 0;
+  const approvedClaims = stats.verifiedMatches || 0; // Approximation based on existing stats
+  const totalClaims = stats.pendingMatches + stats.verifiedMatches;
+
   return (
-    <div>
+    <div className="admin-overview-container">
+      {/* 1. Summary Cards */}
       <div className="admin-stats-grid">
-        {cards.map((c) => (
-          <div key={c.label} className={`stat-card ${c.highlight ? 'stat-card--highlight' : ''}`}>
-            <span className="stat-card__icon">{c.icon}</span>
-            <span className="stat-card__value">{c.value}</span>
-            <span className="stat-card__label">{c.label}</span>
+        <div className="stat-card">
+          <span className="stat-card__icon">👥</span>
+          <span className="stat-card__value">{stats.totalUsers}</span>
+          <span className="stat-card__label">Total Users</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__icon">🔍</span>
+          <span className="stat-card__value">{stats.totalLost}</span>
+          <span className="stat-card__label">Lost Items</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__icon">📦</span>
+          <span className="stat-card__value">{stats.totalFound}</span>
+          <span className="stat-card__label">Found Items</span>
+        </div>
+        <div className="stat-card stat-card--highlight">
+          <span className="stat-card__icon">⏳</span>
+          <span className="stat-card__value">{stats.pendingMatches}</span>
+          <span className="stat-card__label">Pending Claims</span>
+        </div>
+        <div className="stat-card stat-card--success">
+          <span className="stat-card__icon">✅</span>
+          <span className="stat-card__value">{stats.verifiedMatches}</span>
+          <span className="stat-card__label">Approved Claims</span>
+        </div>
+        <div className="stat-card stat-card--danger">
+          <span className="stat-card__icon">❌</span>
+          <span className="stat-card__value">{stats.totalMatches - stats.verifiedMatches - stats.pendingMatches}</span>
+          <span className="stat-card__label">Rejected Claims</span>
+        </div>
+        <div className="stat-card stat-card--info">
+          <span className="stat-card__icon">📈</span>
+          <span className="stat-card__value">{recoveryRate}%</span>
+          <span className="stat-card__label">Recovered Items %</span>
+        </div>
+      </div>
+
+      <div className="admin-overview-middle">
+        {/* 2. Analytics Overview (Progress Bars) */}
+        <div className="admin-analytics-section">
+          <h3 className="section-title">Analytics Overview</h3>
+          <div className="progress-wrapper">
+            <div className="progress-header">
+              <span>Lost vs Found Items</span>
+              <span>{stats.totalFound} / {stats.totalLost}</span>
+            </div>
+            <div className="progress-bar-bg">
+              <div 
+                className="progress-bar-fill progress-bar-fill--blue" 
+                style={{ width: `${stats.totalLost > 0 ? Math.min((stats.totalFound / stats.totalLost) * 100, 100) : 0}%` }}
+              ></div>
+            </div>
           </div>
-        ))}
+          
+          <div className="progress-wrapper">
+            <div className="progress-header">
+              <span>Approved Claims Rate</span>
+              <span>{totalClaims > 0 ? Math.round((approvedClaims / totalClaims) * 100) : 0}%</span>
+            </div>
+            <div className="progress-bar-bg">
+              <div 
+                className="progress-bar-fill progress-bar-fill--green" 
+                style={{ width: `${totalClaims > 0 ? (approvedClaims / totalClaims) * 100 : 0}%` }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="progress-wrapper">
+            <div className="progress-header">
+              <span>Recovery Rate</span>
+              <span>{recoveryRate}%</span>
+            </div>
+            <div className="progress-bar-bg">
+              <div 
+                className="progress-bar-fill progress-bar-fill--gold" 
+                style={{ width: `${recoveryRate}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        {/* 5. AI Overview Card */}
+        <div className="admin-ai-overview-card">
+          <h3 className="section-title">🧠 AI Match Overview</h3>
+          <div className="ai-stats-grid">
+            <div className="ai-stat">
+              <span className="ai-stat-val">{stats.aiMatches || aiMatchesList.length}</span>
+              <span className="ai-stat-lbl">Total AI Matches</span>
+            </div>
+            <div className="ai-stat">
+              <span className="ai-stat-val">{imageMatches}</span>
+              <span className="ai-stat-lbl">Image Matches</span>
+            </div>
+            <div className="ai-stat">
+              <span className="ai-stat-val">{textMatches}</span>
+              <span className="ai-stat-lbl">Text Matches</span>
+            </div>
+            <div className="ai-stat">
+              <span className="ai-stat-val">{semanticMatches}</span>
+              <span className="ai-stat-lbl">Semantic Matches</span>
+            </div>
+            <div className="ai-stat ai-stat--full">
+              <span className="ai-stat-val">{avgConfidence}%</span>
+              <span className="ai-stat-lbl">Average Confidence Score</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Quick Actions */}
+      <div className="admin-quick-actions">
+        <h3 className="section-title">Quick Actions</h3>
+        <div className="quick-actions-grid">
+          {/* Hiding buttons that don't have backend support as per user instruction 2 */}
+          <button className="btn btn--secondary" onClick={() => navigate('/admin/claims')}>
+            📋 View Pending Claims
+          </button>
+          <button className="btn btn--secondary" onClick={() => navigate('/admin/matches')}>
+            ✨ View AI Matches
+          </button>
+        </div>
+      </div>
+
+      {/* 4. Recent Data */}
+      <div className="admin-recent-sections">
+        <h3 className="section-title">Recent AI Matches</h3>
+        <div className="admin-matches-list">
+          {matches.filter(m => m.isAiMatch || m.matchingMethod === 'Hybrid AI Engine').slice(0, 3).map(match => (
+            <MatchCard key={match._id} match={match} onVerify={onVerify} onReject={onReject} onMarkReturned={onMarkReturned} />
+          ))}
+        </div>
+
+        <h3 className="section-title" style={{ marginTop: 32 }}>Recent Claims</h3>
+        <ClaimsTab claims={claims.slice(0, 3)} onVerify={onVerifyClaim} onReject={onRejectClaim} />
+
+        <h3 className="section-title" style={{ marginTop: 32 }}>Recent Lost Items</h3>
+        <LostItemsTab items={lostItems.slice(0, 3)} onDelete={onDeleteLost} />
+
+        <h3 className="section-title" style={{ marginTop: 32 }}>Recent Found Items</h3>
+        <FoundItemsTab items={foundItems.slice(0, 3)} onDelete={onDeleteFound} />
       </div>
     </div>
   );
 };
 
-const UsersTab = ({ users }) => (
-  <div className="admin-table-wrapper">
-    <table className="admin-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Login Email</th>
-          <th>Full Name</th>
-          <th>Contact Email</th>
-          <th>Mobile</th>
-          <th>Role</th>
-          <th>Joined</th>
-        </tr>
-      </thead>
-      <tbody>
-        {users.map((u) => (
-          <tr key={u._id}>
-            <td>{u.name}</td>
-            <td>{u.email}</td>
-            <td>{u.fullName || <span className="admin-muted">—</span>}</td>
-            <td>{u.profileEmail || <span className="admin-muted">—</span>}</td>
-            <td>{u.mobileNumber || <span className="admin-muted">—</span>}</td>
-            <td>
-              <span className={`role-badge role-badge--${u.role}`}>{u.role}</span>
-            </td>
-            <td>{new Date(u.createdAt).toLocaleDateString()}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
+const UsersTab = ({ users }) => {
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 10;
 
-const LostItemsTab = ({ items, onDelete }) => (
-  <div className="admin-table-wrapper">
-    <table className="admin-table">
-      <thead>
-        <tr>
-          <th>Item Type</th>
-          <th>Category</th>
-          <th>Color</th>
-          <th>Location</th>
-          <th>Reported By</th>
-          <th>Status</th>
-          <th>Unique Marks</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((item) => (
-          <tr key={item._id}>
-            <td><strong>{item.itemType || '—'}</strong></td>
-            <td>{item.category}</td>
-            <td>{item.color || '—'}</td>
-            <td>{item.location}</td>
-            <td>{item.user?.name || 'Unknown'}</td>
-            <td><StatusBadge status={item.status} /></td>
-            <td>
-              {item.uniqueMarks ? (
-                <span className="admin-private-field">{item.uniqueMarks}</span>
-              ) : (
-                <span className="admin-muted">—</span>
-              )}
-            </td>
-            <td>
-              <button className="btn btn--danger" onClick={() => onDelete(item._id)}>
-                Delete
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
+  const filtered = users.filter(u => 
+    u.name.toLowerCase().includes(search.toLowerCase()) || 
+    u.email.toLowerCase().includes(search.toLowerCase())
+  );
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginated = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
-const FoundItemsTab = ({ items, onDelete }) => (
-  <div className="admin-table-wrapper">
-    <table className="admin-table">
-      <thead>
-        <tr>
-          <th>Item Type</th>
-          <th>Category</th>
-          <th>Color</th>
-          <th>Location</th>
-          <th>Finder</th>
-          <th>Status</th>
-          <th>Unique Marks</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((item) => (
-          <tr key={item._id}>
-            <td><strong>{item.itemType || '—'}</strong></td>
-            <td>{item.category}</td>
-            <td>{item.color || '—'}</td>
-            <td>{item.location}</td>
-            <td>{item.user?.name || 'Unknown'}</td>
-            <td><StatusBadge status={item.status} /></td>
-            <td>
-              {item.uniqueMarks ? (
-                <span className="admin-private-field">{item.uniqueMarks}</span>
-              ) : (
-                <span className="admin-muted">—</span>
-              )}
-            </td>
-            <td>
-              <button className="btn btn--danger" onClick={() => onDelete(item._id)}>
-                Delete
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
+  return (
+    <div>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+        <input 
+          type="text" 
+          placeholder="Search users..." 
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', width: '250px' }}
+        />
+      </div>
+      <div className="admin-table-wrapper">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Login Email</th>
+              <th>Full Name</th>
+              <th>Contact Email</th>
+              <th>Mobile</th>
+              <th>Role</th>
+              <th>Joined</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.map((u) => (
+              <tr key={u._id}>
+                <td><strong>{u.name}</strong></td>
+                <td>{u.email}</td>
+                <td>{u.fullName || <span className="admin-muted">—</span>}</td>
+                <td>{u.profileEmail || <span className="admin-muted">—</span>}</td>
+                <td>{u.mobileNumber || <span className="admin-muted">—</span>}</td>
+                <td>
+                  <span className={`role-badge role-badge--${u.role}`}>{u.role}</span>
+                </td>
+                <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+              </tr>
+            ))}
+            {paginated.length === 0 && (
+              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '24px' }}>No users found</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+          <span style={{ fontSize: '13px', color: '#64748b' }}>Showing page {page} of {totalPages}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn--secondary" disabled={page === 1} onClick={() => setPage(p => p - 1)} style={{ padding: '6px 12px', fontSize: '13px' }}>Previous</button>
+            <button className="btn btn--secondary" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 12px', fontSize: '13px' }}>Next</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const LostItemsTab = ({ items, onDelete }) => {
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const filtered = items.filter(item => 
+    (item.itemType || '').toLowerCase().includes(search.toLowerCase()) || 
+    (item.category || '').toLowerCase().includes(search.toLowerCase()) ||
+    (item.location || '').toLowerCase().includes(search.toLowerCase()) ||
+    (item.user?.name || '').toLowerCase().includes(search.toLowerCase())
+  );
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginated = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+        <input 
+          type="text" 
+          placeholder="Search lost items..." 
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', width: '250px' }}
+        />
+      </div>
+      <div className="admin-table-wrapper">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Item Type</th>
+              <th>Category</th>
+              <th>Color</th>
+              <th>Location</th>
+              <th>Reported By</th>
+              <th>Status</th>
+              <th>Unique Marks</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.map((item) => (
+              <tr key={item._id}>
+                <td><strong>{item.itemType || '—'}</strong></td>
+                <td>{item.category}</td>
+                <td>{item.color || '—'}</td>
+                <td>{item.location}</td>
+                <td>{item.user?.name || 'Unknown'}</td>
+                <td><StatusBadge status={item.status} /></td>
+                <td>
+                  {item.uniqueMarks ? (
+                    <span className="admin-private-field">{item.uniqueMarks}</span>
+                  ) : (
+                    <span className="admin-muted">—</span>
+                  )}
+                </td>
+                <td>
+                  <button className="btn btn--danger" onClick={() => onDelete(item._id)}>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {paginated.length === 0 && (
+              <tr><td colSpan="8" style={{ textAlign: 'center', padding: '24px' }}>No items found</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+          <span style={{ fontSize: '13px', color: '#64748b' }}>Showing page {page} of {totalPages}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn--secondary" disabled={page === 1} onClick={() => setPage(p => p - 1)} style={{ padding: '6px 12px', fontSize: '13px' }}>Previous</button>
+            <button className="btn btn--secondary" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 12px', fontSize: '13px' }}>Next</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const FoundItemsTab = ({ items, onDelete }) => {
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const filtered = items.filter(item => 
+    (item.itemType || '').toLowerCase().includes(search.toLowerCase()) || 
+    (item.category || '').toLowerCase().includes(search.toLowerCase()) ||
+    (item.location || '').toLowerCase().includes(search.toLowerCase()) ||
+    (item.user?.name || '').toLowerCase().includes(search.toLowerCase())
+  );
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginated = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+        <input 
+          type="text" 
+          placeholder="Search found items..." 
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', width: '250px' }}
+        />
+      </div>
+      <div className="admin-table-wrapper">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Item Type</th>
+              <th>Category</th>
+              <th>Color</th>
+              <th>Location</th>
+              <th>Finder</th>
+              <th>Status</th>
+              <th>Unique Marks</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.map((item) => (
+              <tr key={item._id}>
+                <td><strong>{item.itemType || '—'}</strong></td>
+                <td>{item.category}</td>
+                <td>{item.color || '—'}</td>
+                <td>{item.location}</td>
+                <td>{item.user?.name || 'Unknown'}</td>
+                <td><StatusBadge status={item.status} /></td>
+                <td>
+                  {item.uniqueMarks ? (
+                    <span className="admin-private-field">{item.uniqueMarks}</span>
+                  ) : (
+                    <span className="admin-muted">—</span>
+                  )}
+                </td>
+                <td>
+                  <button className="btn btn--danger" onClick={() => onDelete(item._id)}>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {paginated.length === 0 && (
+              <tr><td colSpan="8" style={{ textAlign: 'center', padding: '24px' }}>No items found</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+          <span style={{ fontSize: '13px', color: '#64748b' }}>Showing page {page} of {totalPages}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn--secondary" disabled={page === 1} onClick={() => setPage(p => p - 1)} style={{ padding: '6px 12px', fontSize: '13px' }}>Previous</button>
+            <button className="btn btn--secondary" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 12px', fontSize: '13px' }}>Next</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const MatchCard = ({ match, onVerify, onReject, onMarkReturned }) => {
   const [expanded, setExpanded] = useState(false);
@@ -490,8 +740,17 @@ const ClaimsTab = ({ claims, onVerify, onReject }) => {
                     <br /><span className="admin-muted">{claim.foundItem?.location || ''}</span>
                   </td>
                   <td>
-                    {claim.lostItem?.itemType || claim.lostItem?.category || '—'}
-                    <br /><span className="admin-muted">{claim.lostItem?.location || ''}</span>
+                    {claim.lostItem ? (
+                      <>
+                        {claim.lostItem.itemType || claim.lostItem.category || '—'}
+                        <br /><span className="admin-muted">{claim.lostItem.location || ''}</span>
+                      </>
+                    ) : (
+                      <>
+                        <strong>Direct Claim</strong>
+                        <br /><span className="admin-muted">Not provided</span>
+                      </>
+                    )}
                   </td>
                   <td><span className="admin-private-field">{claim.uniqueMarks || '—'}</span></td>
                   <td><span className="admin-private-field">{claim.ownershipDetails || '—'}</span></td>
@@ -670,6 +929,8 @@ const ADMIN_TABS = [
   { key: 'matches', label: '🔗 Matches', path: '/admin/matches' },
   { key: 'claims', label: '📎 Claims', path: '/admin/claims' },
   { key: 'notifications', label: '🔔 Notifications', path: '/admin/notifications' },
+  { key: 'rewards_req', label: '🎁 Redemptions', path: '/admin/rewards/requests' },
+  { key: 'rewards_set', label: '⚙️ Reward Settings', path: '/admin/rewards/settings' },
 ];
 
 const AdminDashboard = () => {
@@ -815,7 +1076,7 @@ const AdminDashboard = () => {
   const renderTabContent = () => {
     if (loading) return <Loader />;
     switch (activeTab) {
-      case 'overview': return <Overview stats={stats} />;
+      case 'overview': return <Overview stats={stats} matches={matches} lostItems={lostItems} foundItems={foundItems} claims={claims} onVerify={handleVerify} onReject={handleReject} onMarkReturned={handleMarkReturned} onVerifyClaim={handleVerifyClaim} onRejectClaim={handleRejectClaim} onDeleteLost={handleDeleteLost} onDeleteFound={handleDeleteFound} />;
       case 'users': return <UsersTab users={users} />;
       case 'lost': return <LostItemsTab items={lostItems} onDelete={handleDeleteLost} />;
       case 'found': return <FoundItemsTab items={foundItems} onDelete={handleDeleteFound} />;
@@ -849,55 +1110,20 @@ const AdminDashboard = () => {
             </button>
           </div>
         );
-      default: return <Overview stats={stats} />;
+      default: return <Overview stats={stats} matches={matches} lostItems={lostItems} foundItems={foundItems} claims={claims} onVerify={handleVerify} onReject={handleReject} onMarkReturned={handleMarkReturned} onVerifyClaim={handleVerifyClaim} onRejectClaim={handleRejectClaim} onDeleteLost={handleDeleteLost} onDeleteFound={handleDeleteFound} />;
     }
   };
 
   return (
-    <div className="admin-page">
-      <div className="admin-page__header">
-        <div>
-          <h1>Admin Dashboard</h1>
-          <p className="report-page__subtitle">Manage users, reports, and match verification</p>
-        </div>
-        <div className="admin-page__header-user">
-          <span className="navbar__user">Hi, {user?.name}</span>
-          <span className="role-badge role-badge--admin">admin</span>
-        </div>
+    <div className="dashboard page-transition">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <h1 style={{ color: '#111827', margin: 0 }}>
+          {ADMIN_TABS.find(t => t.key === activeTab)?.label || 'Dashboard'}
+        </h1>
       </div>
 
-      {error && <div className="auth-error" style={{ marginBottom: 16 }}>{error}</div>}
-
-      {/* Tab navigation */}
-      <div className="admin-tabs">
-        {ADMIN_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            className={`admin-tab ${activeTab === tab.key ? 'admin-tab--active' : ''}`}
-            onClick={() => navigate(tab.path)}
-          >
-            {tab.label}
-            {tab.key === 'matches' && matches.filter((m) => m.status === 'Pending').length > 0 && (
-              <span className="admin-tab-badge">
-                {matches.filter((m) => m.status === 'Pending').length}
-              </span>
-            )}
-            {tab.key === 'claims' && claims.filter((c) => c.status === 'pending').length > 0 && (
-              <span className="admin-tab-badge">
-                {claims.filter((c) => c.status === 'pending').length}
-              </span>
-            )}
-          </button>
-        ))}
-        <button
-          className={`admin-tab ${activeTab === 'profile' ? 'admin-tab--active' : ''}`}
-          onClick={() => navigate('/admin/profile')}
-        >
-          Profile
-        </button>
-      </div>
-
-      <div className="admin-content">
+      <div className="admin-main__content">
+        {error && <div className="auth-error" style={{ marginBottom: 16 }}>{error}</div>}
         {renderTabContent()}
       </div>
     </div>

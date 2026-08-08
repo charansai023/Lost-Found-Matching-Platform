@@ -9,7 +9,6 @@ const claimSchema = new mongoose.Schema({
   lostItem: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'LostItem',
-    required: [true, 'Lost item is required'],
   },
   user: {
     type: mongoose.Schema.Types.ObjectId,

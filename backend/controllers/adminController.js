@@ -7,6 +7,9 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { sendSuccess } = require('../utils/apiResponse');
 const { createAndSendNotification } = require('../services/socketService');
+const { getRewardLevel, getPointsForCategory } = require('../services/rewardService');
+const RewardHistory = require('../models/RewardHistory');
+const { sendClaimStatusEmail, sendRewardEarnedEmail } = require('../utils/emailService');
 
 // @desc    Get all registered users (with contact info visible to admin)
 // @route   GET /api/admin/users
@@ -220,6 +223,49 @@ const markMatchReturned = asyncHandler(async (req, res) => {
     .populate({ path: 'lostItem', select: '+uniqueMarks +ownershipDetails', populate: { path: 'user', select: 'name email +fullName +profileEmail +mobileNumber' } })
     .populate({ path: 'foundItem', select: '+uniqueMarks +additionalObservations', populate: { path: 'user', select: 'name email' } });
 
+  // --- Reward Points Logic ---
+  if (!match.isRewarded && updatedMatch.foundItem && updatedMatch.foundItem.user) {
+    const finderId = updatedMatch.foundItem.user._id;
+    const category = updatedMatch.foundItem.category;
+    const pointsToAward = await getPointsForCategory(category);
+    
+    const finderUser = await User.findById(finderId);
+    if (finderUser) {
+      finderUser.rewardPoints += pointsToAward;
+      finderUser.itemsReturned += 1;
+      finderUser.rewardLevel = getRewardLevel(finderUser.rewardPoints);
+      await finderUser.save();
+
+      await RewardHistory.create({
+        user: finderId,
+        points: pointsToAward,
+        type: 'earned',
+        reason: `Successfully returned a ${category}`,
+      });
+
+      // Mark the match as rewarded so they don't get double points
+      match.isRewarded = true;
+      await match.save();
+
+      // Send reward earned email (non-blocking, fire-and-forget)
+      sendRewardEarnedEmail({
+        userEmail: finderUser.email,
+        userName: finderUser.name,
+        rewardType: `Successfully returned a ${category}`,
+        pointsEarned: pointsToAward,
+        rewardLevel: finderUser.rewardLevel,
+      }).catch((emailErr) => {
+        console.error('[Admin] Failed to send reward-earned email:', {
+          to: finderUser.email,
+          finderId: finderId,
+          points: pointsToAward,
+          code: emailErr.code,
+          message: emailErr.message,
+        });
+      });
+    }
+  }
+
   // Notify both parties that item is returned
   const lostOwnerIdRet = updatedMatch.lostItem?.user?._id;
   const foundOwnerIdRet = updatedMatch.foundItem?.user?._id;
@@ -235,8 +281,8 @@ const markMatchReturned = asyncHandler(async (req, res) => {
   }
   if (foundOwnerIdRet) {
     createAndSendNotification({
-      title: '\ud83d� Item Returned to Owner',
-      message: `The item you found has been successfully returned to its owner. Thank you for your honesty!`,
+      title: '\ud83d Item Returned to Owner',
+      message: `The item you found has been successfully returned to its owner. Thank you for your honesty! You earned points.`,
       notificationType: 'returned',
       userId: foundOwnerIdRet,
       relatedMatch: updatedMatch._id,
@@ -245,7 +291,7 @@ const markMatchReturned = asyncHandler(async (req, res) => {
   }
   // Notify admins too
   createAndSendNotification({
-    title: '\ud83d� Item Successfully Returned',
+    title: '\ud83d Item Successfully Returned',
     message: `Match resolved: "${updatedMatch.lostItem?.itemType}" returned to ${updatedMatch.lostItem?.user?.name}.`,
     notificationType: 'item_returned',
     isAdminNotification: true,
@@ -314,6 +360,10 @@ const updateClaimStatus = asyncHandler(async (req, res) => {
 
   if (action === 'verify') {
     claim.status = 'verified';
+    await FoundItem.findByIdAndUpdate(claim.foundItem, { status: 'Verified' });
+    if (claim.lostItem) {
+      await LostItem.findByIdAndUpdate(claim.lostItem, { status: 'Verified' });
+    }
   } else if (action === 'reject') {
     claim.status = 'rejected';
   } else {
@@ -339,6 +389,25 @@ const updateClaimStatus = asyncHandler(async (req, res) => {
       userId: updatedClaim.user._id,
       priority: 'high',
     }).catch((e) => console.error('[Notification] updateClaimStatus:', e.message));
+
+    // Send claim status email (non-blocking, fire-and-forget)
+    sendClaimStatusEmail({
+      userEmail: updatedClaim.user.email,
+      userName: updatedClaim.user.name,
+      itemTitle: updatedClaim.foundItem?.itemType || updatedClaim.foundItem?.category || 'item',
+      claimStatus: action === 'verify' ? 'approved' : 'rejected',
+      statusMessage: action === 'verify'
+        ? 'Please proceed to collect your item or contact support for handover details.'
+        : 'If you believe this decision is incorrect, please contact support with additional proof of ownership.',
+    }).catch((emailErr) => {
+      console.error('[Admin] Failed to send claim-status email:', {
+        to: updatedClaim.user.email,
+        claimId: claim._id,
+        action,
+        code: emailErr.code,
+        message: emailErr.message,
+      });
+    });
   }
 
   sendSuccess(res, 200, `Claim ${action}ed successfully`, { claim: updatedClaim });

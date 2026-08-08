@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import NotificationBell from './NotificationBell';
 import './Navbar.css';
@@ -49,12 +49,15 @@ const Navbar = () => {
         {isAuthenticated && isAdmin && (
           /* ── Admin Navigation ── */
           <>
-            <Link to="/admin" onClick={closeMenu}>Dashboard</Link>
-            <Link to="/admin/users" onClick={closeMenu}>Users</Link>
-            <Link to="/admin/lost" onClick={closeMenu}>Lost Reports</Link>
-            <Link to="/admin/found" onClick={closeMenu}>Found Reports</Link>
-            <Link to="/admin/matches" onClick={closeMenu}>Matches</Link>
-            <Link to="/admin/profile" onClick={closeMenu}>Profile</Link>
+            <NavLink to="/admin" end onClick={closeMenu}>Dashboard</NavLink>
+            <NavLink to="/admin/lost" onClick={closeMenu}>Lost Items</NavLink>
+            <NavLink to="/admin/found" onClick={closeMenu}>Found Items</NavLink>
+            <NavLink to="/admin/claims" onClick={closeMenu}>Claims</NavLink>
+            <NavLink to="/admin/users" onClick={closeMenu}>Users</NavLink>
+            <NavLink to="/admin/matches" onClick={closeMenu}>AI Matches</NavLink>
+            <NavLink to="/admin/notifications" onClick={closeMenu}>Notifications</NavLink>
+            <NavLink to="/admin/rewards/requests" onClick={closeMenu}>Reward Requests</NavLink>
+            <NavLink to="/admin/rewards/settings" onClick={closeMenu}>Reward Settings</NavLink>
             <span className="navbar__user">Hi, {user?.name}</span>
             <NotificationBell />
             <button className="btn btn--secondary" onClick={handleLogout}>
@@ -72,6 +75,7 @@ const Navbar = () => {
             <Link to="/lost-items/new" onClick={closeMenu}>Report Lost</Link>
             <Link to="/found-items/new" onClick={closeMenu}>Report Found</Link>
             <Link to="/my-reports" onClick={closeMenu}>My Reports</Link>
+            <Link to="/student/rewards" onClick={closeMenu}>Rewards</Link>
             <Link to="/profile" onClick={closeMenu}>Profile</Link>
             <span className="navbar__user">Hi, {user?.name}</span>
             <NotificationBell />

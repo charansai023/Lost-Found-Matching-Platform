@@ -41,7 +41,6 @@ const ClaimModal = ({ foundItem, onClose, onSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.lostItemId) { setError('Please select the lost item you are claiming.'); return; }
     if (!form.uniqueMarks.trim()) { setError('Unique identifying marks are required.'); return; }
     if (!form.ownershipDetails.trim()) { setError('Additional ownership details are required.'); return; }
     if (!form.approximateDateLost) { setError('Approximate date lost is required.'); return; }
@@ -98,22 +97,17 @@ const ClaimModal = ({ foundItem, onClose, onSuccess }) => {
             {error && <div className="auth-error">{error}</div>}
 
             <form className="claim-modal__form" onSubmit={handleSubmit}>
-              <label className="form-label">Which of your lost items is this? *</label>
+              <label className="form-label">Which of your lost items is this? <span className="claim-modal__optional">(optional)</span></label>
               {loadingItems ? (
                 <p className="claim-modal__loading">Loading your lost items…</p>
-              ) : myLostItems.length === 0 ? (
-                <div className="claim-modal__no-items">
-                  You have no open lost item reports. Please report the lost item first from the Lost Items page.
-                </div>
               ) : (
                 <select
                   className="form-input"
                   name="lostItemId"
                   value={form.lostItemId}
                   onChange={handleChange}
-                  required
                 >
-                  <option value="">— Select your lost item —</option>
+                  <option value="">— Direct Claim (No lost report) —</option>
                   {myLostItems.map((item) => (
                     <option key={item._id} value={item._id}>
                       {item.itemType || item.category} · {item.location} ·{' '}
@@ -173,7 +167,7 @@ const ClaimModal = ({ foundItem, onClose, onSuccess }) => {
                 <button
                   type="submit"
                   className="btn btn--primary"
-                  disabled={loading || loadingItems || myLostItems.length === 0}
+                  disabled={loading || loadingItems}
                 >
                   {loading ? 'Submitting…' : 'Submit Claim'}
                 </button>

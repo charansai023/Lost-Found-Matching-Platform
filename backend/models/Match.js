@@ -119,6 +119,10 @@ const matchSchema = new mongoose.Schema({
     enum: ['Pending', 'Verified', 'Rejected', 'Returned'],
     default: 'Pending',
   },
+  isRewarded: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

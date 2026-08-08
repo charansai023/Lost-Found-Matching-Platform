@@ -17,9 +17,6 @@ const createClaim = asyncHandler(async (req, res) => {
   if (!foundItemId) {
     throw new ApiError(400, 'Found item ID is required');
   }
-  if (!lostItemId) {
-    throw new ApiError(400, 'Lost item ID is required');
-  }
   if (!uniqueMarks || !uniqueMarks.trim()) {
     throw new ApiError(400, 'Unique identifying marks are required');
   }
@@ -35,41 +32,72 @@ const createClaim = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Found item not found');
   }
 
-  const lostItem = await LostItem.findById(lostItemId);
-  if (!lostItem) {
-    throw new ApiError(404, 'Lost item not found');
+  // Ensure item is claimable
+  if (['Verified', 'Returned', 'Resolved', 'Closed'].includes(foundItem.status)) {
+    throw new ApiError(400, `This found item is no longer available for claiming (Status: ${foundItem.status})`);
+  }
+
+  // Prevent duplicate active claims by this user for this item
+  const existingClaim = await Claim.findOne({
+    user: req.user._id,
+    foundItem: foundItemId,
+    status: { $in: ['pending', 'verified'] }
+  });
+  if (existingClaim) {
+    throw new ApiError(400, 'You already have an active claim for this found item');
+  }
+
+  let lostItem = null;
+  if (lostItemId) {
+    lostItem = await LostItem.findById(lostItemId);
+    if (!lostItem) {
+      throw new ApiError(404, 'Lost item not found');
+    }
   }
 
   const supportingImage = req.file ? `/uploads/${req.file.filename}` : '';
 
-  const claim = await Claim.create({
+  const claimData = {
     user: req.user._id,
     foundItem: foundItemId,
-    lostItem: lostItemId,
     uniqueMarks,
     ownershipDetails,
     approximateDateLost,
     supportingImage,
     status: 'pending',
-  });
+  };
+  
+  if (lostItemId) {
+    claimData.lostItem = lostItemId;
+  }
+  
+  const claim = await Claim.create(claimData);
 
   // Calculate matching score and create/update a Match record if not already present
-  let match = await Match.findOne({ lostItem: lostItemId, foundItem: foundItemId });
-  if (!match) {
-    const { score, matchLevel, matchedFields } = calculateMatchScore(lostItem, foundItem);
-    match = await Match.create({
-      lostItem: lostItemId,
-      foundItem: foundItemId,
-      score,
-      matchLevel,
-      matchedFields,
-    });
+  let match = null;
+  if (lostItemId) {
+    match = await Match.findOne({ lostItem: lostItemId, foundItem: foundItemId });
+    if (!match) {
+      const { score, matchLevel, matchedFields } = calculateMatchScore(lostItem, foundItem);
+      match = await Match.create({
+        lostItem: lostItemId,
+        foundItem: foundItemId,
+        score,
+        matchLevel,
+        matchedFields,
+      });
+    }
   }
 
   // Notify the Admin of new claim request
+  const isDirectClaim = !lostItemId;
+  const itemName = foundItem.title || foundItem.itemType || foundItem.category;
+  
   createAndSendNotification({
-    title: '\ud83d\udcce New Claim Request',
-    message: `${req.user.name} submitted a claim for a ${foundItem.itemType || foundItem.category} found at ${foundItem.location}.`,
+    title: isDirectClaim ? '🚨 New Direct Claim Submitted' : '📎 New Claim Request',
+    message: isDirectClaim 
+      ? `${req.user.name} has claimed a found item: ${itemName}`
+      : `${req.user.name} submitted a claim for a ${itemName} found at ${foundItem.location}.`,
     notificationType: 'new_claim',
     isAdminNotification: true,
     priority: 'high',

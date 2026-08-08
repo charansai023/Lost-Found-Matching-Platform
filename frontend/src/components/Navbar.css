@@ -40,6 +40,11 @@
   color: #ffffff;
 }
 
+.navbar__links a.active {
+  color: #facc15;
+  font-weight: 600;
+}
+
 .navbar__user {
   color: #9ca3af;
   font-size: 14px;
