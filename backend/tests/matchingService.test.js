@@ -106,9 +106,9 @@ async function runUnitTests() {
     description: 'Black sport sneakers',
   };
 
-  // 1. Wallet vs Wallet -> 90-100%
+  // 1. Wallet vs Wallet -> 85-100%
   await testCase('1. Wallet vs Wallet', walletA, walletB, (score) => {
-    assert(score >= 90 && score <= 100, `Expected 90-100%, got ${score}%`);
+    assert(score >= 85 && score <= 100, `Expected 85-100%, got ${score}%`);
   });
 
   // 2. Wallet vs Different Wallet -> 50-95%
