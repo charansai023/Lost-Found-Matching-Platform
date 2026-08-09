@@ -332,6 +332,7 @@ const calculateHybridMatchScore = async (lostItem, foundItem) => {
     titleSimilarity,
     descriptionSimilarity,
     locationSimilarity,
+    categoryScore,
     overallTextSimilarity,
     finalConfidenceScore,
     matchingMethod: 'Hybrid AI Engine',

@@ -204,8 +204,8 @@ const MyReports = () => {
                             }}
                           >
                             {(bestMatch.isAiMatch || bestMatch.imageSimilarityScore >= 80)
-                              ? `✨ AI Match (${bestMatch.imageSimilarityScore || bestMatch.score}%)`
-                              : `${bestMatch.score}% · ${bestMatch.matchLevel}`}
+                              ? `✨ AI Match (${bestMatch.score}%)`
+                              : `${bestMatch.score}% • ${bestMatch.matchLevel}`}
                           </span>
                           <span className="my-report-card__match-status">
                             Match: <StatusBadge status={bestMatch.status} />

@@ -40,15 +40,32 @@ const normalizeVector = (vec) => {
 };
 
 /**
- * Calculates Cosine Similarity between high-dimensional embedding vectors
+ * Calculates Pearson Correlation (Mean-centered Cosine Similarity) between vectors
  */
 const calculateCosineSimilarity = (vecA, vecB) => {
-  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+  if (!vecA || !vecB || vecA.length !== vecB.length || vecA.length === 0) return 0;
+  
+  const meanA = vecA.reduce((sum, val) => sum + val, 0) / vecA.length;
+  const meanB = vecB.reduce((sum, val) => sum + val, 0) / vecB.length;
+  
   let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  
   for (let i = 0; i < vecA.length; i++) {
-    dotProduct += vecA[i] * vecB[i];
+    const diffA = vecA[i] - meanA;
+    const diffB = vecB[i] - meanB;
+    dotProduct += diffA * diffB;
+    normA += diffA * diffA;
+    normB += diffB * diffB;
   }
-  return Math.max(0, Math.min(1, dotProduct));
+  
+  if (normA === 0 || normB === 0) return 0;
+  
+  const correlation = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  // Map correlation from [-1, 1] to [0, 1] or clamp it if we only want positive correlation
+  // For images, we just take max(0, correlation)
+  return Math.max(0, Math.min(1, correlation));
 };
 
 /**

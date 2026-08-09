@@ -51,11 +51,12 @@ const MyMatches = () => {
                   </p>
                   {match.matchingMethod === 'Hybrid AI Engine' ? (
                     <div style={{ marginTop: '8px', display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '0.85rem', color: '#555', background: '#f5f5f7', padding: '6px 10px', borderRadius: '4px' }}>
-                      <span><strong>AI Confidence:</strong> <span style={{color: '#4f46e5', fontWeight: 'bold'}}>{match.finalConfidenceScore}%</span></span>
-                      <span><strong>Image Similarity:</strong> {match.imageSimilarityScore}%</span>
-                      <span><strong>Text Similarity:</strong> {match.overallTextSimilarity || match.semanticSimilarity}%</span>
-                      <span><strong>Location Similarity:</strong> {match.locationSimilarity}%</span>
-                      <span><strong>Method:</strong> {match.matchingMethod}</span>
+                      <span><strong>AI Confidence:</strong> <span style={{color: '#4f46e5', fontWeight: 'bold'}}>{match.finalConfidenceScore || match.score}%</span></span>
+                      <span><strong>Image Similarity:</strong> {match.imageSimilarityScore || 0}%</span>
+                      <span><strong>Text Similarity:</strong> {match.overallTextSimilarity || match.semanticSimilarity || 0}%</span>
+                      <span><strong>Location Similarity:</strong> {match.locationSimilarity || 0}%</span>
+                      <span><strong>Category Compatibility:</strong> {match.categoryScore || 0}%</span>
+                      <span><strong>Method:</strong> {match.matchingMethod || 'Legacy'}</span>
                     </div>
                   ) : (
                     match.imageSimilarityScore > 0 && (
