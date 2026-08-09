@@ -34,7 +34,7 @@ function AppContent() {
   const isAdminRoute = location.pathname.startsWith('/admin');
 
   return (
-    <>
+    <div className="app-layout">
       <Navbar />
       <main className="app-main">
         {showCompleteProfile ? (
@@ -226,7 +226,7 @@ function AppContent() {
           </div>
         )}
       </main>
-    </>
+    </div>
   );
 }
 

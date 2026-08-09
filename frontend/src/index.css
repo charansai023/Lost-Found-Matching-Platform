@@ -13,8 +13,34 @@ a {
   color: inherit;
 }
 
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+  background-color: #f9fafb;
+  width: 100%;
+}
+
 .app-main {
-  min-height: calc(100vh - 60px);
+  flex: 1;
+  margin-left: 260px;
+  min-height: 100vh;
+  width: calc(100% - 260px);
+  max-width: calc(100% - 260px);
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .app-main {
+    margin-left: 0;
+    margin-top: 60px;
+    width: 100%;
+    max-width: 100%;
+    min-height: calc(100vh - 60px);
+  }
 }
 
 /* --- Buttons --- */
