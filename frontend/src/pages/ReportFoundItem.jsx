@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { createFoundItem } from '../services/foundItemService';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { createFoundItem, getFoundItemById, updateFoundItem } from '../services/foundItemService';
 import './ReportItem.css';
 
 const CATEGORY_OPTIONS = [
@@ -8,7 +8,8 @@ const CATEGORY_OPTIONS = [
   'Clothing', 'Keys', 'Books', 'Sports Equipment', 'Other',
 ];
 
-const ReportFoundItem = () => {
+const ReportFoundItem = ({ isEditMode = false }) => {
+  const { id } = useParams();
   const [formData, setFormData] = useState({
     itemType: '',
     category: '',
@@ -28,6 +29,32 @@ const ReportFoundItem = () => {
 
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (isEditMode && id) {
+      const fetchItem = async () => {
+        try {
+          const res = await getFoundItemById(id);
+          const item = res.data.foundItem;
+          setFormData({
+            itemType: item.itemType || '',
+            category: item.category || '',
+            brand: item.brand || '',
+            color: item.color || '',
+            model: item.model || '',
+            description: item.description || '',
+            dateFound: item.dateFound ? item.dateFound.split('T')[0] : '',
+            location: item.location || '',
+            uniqueMarks: item.uniqueMarks || '',
+            additionalObservations: item.additionalObservations || '',
+          });
+        } catch (err) {
+          setError('Failed to load item for editing.');
+        }
+      };
+      fetchItem();
+    }
+  }, [isEditMode, id]);
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -44,10 +71,14 @@ const ReportFoundItem = () => {
         payload.append('image', image);
       }
 
-      await createFoundItem(payload);
+      if (isEditMode) {
+        await updateFoundItem(id, payload);
+      } else {
+        await createFoundItem(payload);
+      }
       navigate('/my-reports');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to submit found item report');
+      setError(err.response?.data?.message || `Failed to ${isEditMode ? 'update' : 'submit'} found item report`);
     } finally {
       setLoading(false);
     }
@@ -55,9 +86,9 @@ const ReportFoundItem = () => {
 
   return (
     <div className="report-page">
-      <h1>Report a Found Item</h1>
+      <h1>{isEditMode ? 'Edit Found Item Report' : 'Report a Found Item'}</h1>
       <p className="report-page__subtitle">
-        We'll automatically check this against all reported lost items
+        {isEditMode ? 'Update the details of your found item.' : 'We\'ll automatically check this against all reported lost items'}
       </p>
 
       {error && <div className="auth-error">{error}</div>}
@@ -145,13 +176,15 @@ const ReportFoundItem = () => {
 
         <div className="form-row">
           <div>
-            <label className="form-label">Date Found</label>
+            <label className="form-label">Date Found <span className="form-required">*</span></label>
             <input
               type="date"
               name="dateFound"
               className="form-input"
               value={formData.dateFound}
               onChange={handleChange}
+              max={new Date().toLocaleDateString('en-CA')}
+              required
             />
           </div>
           <div>
@@ -196,7 +229,7 @@ const ReportFoundItem = () => {
         />
 
         <button type="submit" className="btn btn--primary form-submit" disabled={loading}>
-          {loading ? 'Submitting...' : 'Submit Found Item Report'}
+          {loading ? 'Submitting...' : isEditMode ? 'Update Found Item' : 'Submit Found Item Report'}
         </button>
       </form>
     </div>

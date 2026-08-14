@@ -159,54 +159,59 @@ const NotificationBell = () => {
           )}
         </button>
 
-        {/* Notification Panel Dropdown */}
+        {/* Notification Modal */}
         {isOpen && (
-          <div ref={panelRef} className="notif-panel">
-            <div className="notif-panel__header">
-              <span className="notif-panel__title">🔔 Notifications</span>
-              <div className="notif-panel__actions">
-                {unreadCount > 0 && (
-                  <button className="notif-btn-text" onClick={handleMarkAllRead}>
-                    Mark all read
+          <div className="notif-modal-overlay" onClick={() => setIsOpen(false)}>
+            <div ref={panelRef} className="notif-modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="notif-panel__header">
+                <span className="notif-panel__title">🔔 Notifications</span>
+                <div className="notif-panel__actions">
+                  {unreadCount > 0 && (
+                    <button className="notif-btn-text" onClick={handleMarkAllRead}>
+                      Mark all read
+                    </button>
+                  )}
+                  <button className="notif-btn-close" onClick={() => setIsOpen(false)} aria-label="Close">
+                    ✕
                   </button>
+                </div>
+              </div>
+
+              <div className="notif-panel__list">
+                {notifications.length === 0 ? (
+                  <div className="notif-empty">
+                    <span>🔕</span>
+                    <p>No notifications yet</p>
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n._id}
+                      className={`notif-item ${!n.readStatus ? 'notif-item--unread' : ''} ${typeColor[n.notificationType] || ''}`}
+                      onClick={() => !n.readStatus && handleMarkRead(n._id)}
+                    >
+                      <div className="notif-item__icon">
+                        {typeIcon[n.notificationType] || '🔔'}
+                      </div>
+                      <div className="notif-item__body">
+                        <div className="notif-item__title">{n.title}</div>
+                        <div className="notif-item__msg">{n.message}</div>
+                        <div className="notif-item__meta">
+                          <span className="notif-item__time">{formatTime(n.createdAt)}</span>
+                          {!n.readStatus && <span className="notif-item__unread-dot" />}
+                        </div>
+                      </div>
+                      <button
+                        className="notif-item__delete"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(n._id); }}
+                        title="Delete notification"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))
                 )}
               </div>
-            </div>
-
-            <div className="notif-panel__list">
-              {notifications.length === 0 ? (
-                <div className="notif-empty">
-                  <span>🔕</span>
-                  <p>No notifications yet</p>
-                </div>
-              ) : (
-                notifications.map((n) => (
-                  <div
-                    key={n._id}
-                    className={`notif-item ${!n.readStatus ? 'notif-item--unread' : ''} ${typeColor[n.notificationType] || ''}`}
-                    onClick={() => !n.readStatus && handleMarkRead(n._id)}
-                  >
-                    <div className="notif-item__icon">
-                      {typeIcon[n.notificationType] || '🔔'}
-                    </div>
-                    <div className="notif-item__body">
-                      <div className="notif-item__title">{n.title}</div>
-                      <div className="notif-item__msg">{n.message}</div>
-                      <div className="notif-item__meta">
-                        <span className="notif-item__time">{formatTime(n.createdAt)}</span>
-                        {!n.readStatus && <span className="notif-item__unread-dot" />}
-                      </div>
-                    </div>
-                    <button
-                      className="notif-item__delete"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(n._id); }}
-                      title="Delete notification"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))
-              )}
             </div>
           </div>
         )}

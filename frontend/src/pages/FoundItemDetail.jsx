@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getFoundItemById } from '../services/foundItemService';
 import { getMyClaims } from '../services/claimService';
+import useAuth from '../hooks/useAuth';
 import StatusBadge from '../components/StatusBadge';
 import Loader from '../components/Loader';
 import ClaimModal from '../components/ClaimModal';
@@ -12,6 +13,7 @@ const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/
 const FoundItemDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -137,6 +139,10 @@ const FoundItemDetail = () => {
               userClaim ? (
                  <button className="btn btn--secondary item-detail__action-btn" disabled>
                    {userClaim.status === 'pending' ? 'Claim Pending' : userClaim.status === 'verified' ? '✓ Claim Approved' : 'Claim Submitted'}
+                 </button>
+              ) : (user && (item.user === user._id || item.user?._id === user._id)) ? (
+                 <button className="btn btn--secondary item-detail__action-btn" disabled>
+                   This is your reported item
                  </button>
               ) : (
                 <button

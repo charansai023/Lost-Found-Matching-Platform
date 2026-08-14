@@ -66,6 +66,14 @@ function AppContent() {
                 }
               />
               <Route
+                path="/lost-items/:id/edit"
+                element={
+                  <PrivateRoute>
+                    <ReportLostItem isEditMode={true} />
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/lost-items/:id"
                 element={
                   <PrivateRoute>
@@ -86,6 +94,14 @@ function AppContent() {
                 element={
                   <PrivateRoute>
                     <ReportFoundItem />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/found-items/:id/edit"
+                element={
+                  <PrivateRoute>
+                    <ReportFoundItem isEditMode={true} />
                   </PrivateRoute>
                 }
               />

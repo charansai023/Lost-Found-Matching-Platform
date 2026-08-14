@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getLostItemById } from '../services/lostItemService';
+import useAuth from '../hooks/useAuth';
 import StatusBadge from '../components/StatusBadge';
 import Loader from '../components/Loader';
 import IFoundThisItemModal from '../components/IFoundThisItemModal';
@@ -11,6 +12,7 @@ const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/
 const LostItemDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -122,12 +124,18 @@ const LostItemDetail = () => {
               <strong>Did you find this item?</strong>
               <p>Click below to report it found. We'll automatically link it to this report and notify the admin.</p>
             </div>
-            <button
-              className="btn btn--primary item-detail__action-btn"
-              onClick={() => setShowModal(true)}
-            >
-              🔍 I Found This Item
-            </button>
+            {(user && (item.user === user._id || item.user?._id === user._id)) ? (
+               <button className="btn btn--secondary item-detail__action-btn" disabled>
+                 This is your reported item
+               </button>
+            ) : (
+              <button
+                className="btn btn--primary item-detail__action-btn"
+                onClick={() => setShowModal(true)}
+              >
+                🔍 I Found This Item
+              </button>
+            )}
           </div>
         </div>
       </div>

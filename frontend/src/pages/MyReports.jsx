@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getMyLostItems, getMyFoundItems, getMyMatches } from '../services/myService';
 import { getMyClaims } from '../services/claimService';
+import { deleteLostItem } from '../services/lostItemService';
+import { deleteFoundItem } from '../services/foundItemService';
 import StatusBadge from '../components/StatusBadge';
 import Loader from '../components/Loader';
 import './MyReports.css';
@@ -55,12 +58,34 @@ const MyReports = () => {
     });
   };
 
+  const navigate = useNavigate();
+
   const openDetail = (item, type) => {
     setSelectedItem(item);
     setSelectedItemType(type);
   };
 
   const closeDetail = () => setSelectedItem(null);
+
+  const handleEdit = (item, type) => {
+    navigate(`/${type}-items/${item._id}/edit`);
+  };
+
+  const handleDelete = async (item, type) => {
+    if (!window.confirm('Are you sure you want to delete this report? This action cannot be undone.')) return;
+    try {
+      if (type === 'lost') {
+        await deleteLostItem(item._id);
+        setLostItems(lostItems.filter((i) => i._id !== item._id));
+      } else {
+        await deleteFoundItem(item._id);
+        setFoundItems(foundItems.filter((i) => i._id !== item._id));
+      }
+      closeDetail();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete report.');
+    }
+  };
 
   if (loading) return <Loader />;
 
@@ -357,6 +382,32 @@ const MyReports = () => {
                   </div>
                 );
               })()}
+
+              {/* Edit / Delete Actions */}
+              <div className="detail-modal__actions" style={{ display: 'flex', gap: '10px', marginTop: '20px', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+                {['Pending', 'Matched'].includes(selectedItem.status) ? (
+                  <>
+                    <button 
+                      className="btn btn--secondary" 
+                      style={{ flex: 1 }}
+                      onClick={() => handleEdit(selectedItem, selectedItemType)}
+                    >
+                      ✏️ Edit Report
+                    </button>
+                    <button 
+                      className="btn btn--danger" 
+                      style={{ flex: 1, backgroundColor: '#fee2e2', color: '#b91c1c', border: 'none' }}
+                      onClick={() => handleDelete(selectedItem, selectedItemType)}
+                    >
+                      🗑️ Delete Report
+                    </button>
+                  </>
+                ) : (
+                  <p style={{ color: '#6b7280', fontSize: '13px', width: '100%', textAlign: 'center', margin: 0 }}>
+                    This report cannot be edited or deleted because its status is {selectedItem.status}.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -20,6 +20,21 @@ const createFoundItem = asyncHandler(async (req, res) => {
     linkedLostItemId,
   } = req.body;
 
+  if (!itemType || !category || !location || !dateFound) {
+    throw new ApiError(400, 'Item Type, Category, Location, and Date Found are required fields.');
+  }
+
+  if (new Date(dateFound) > new Date()) {
+    throw new ApiError(400, 'Date Found cannot be in the future.');
+  }
+
+  if (linkedLostItemId) {
+    const linkedLostItem = await LostItem.findById(linkedLostItemId);
+    if (linkedLostItem && linkedLostItem.user.toString() === req.user._id.toString()) {
+      throw new ApiError(403, 'You cannot report finding an item that you originally reported as lost.');
+    }
+  }
+
   const image = req.file ? `/uploads/${req.file.filename}` : '';
 
   const foundItem = await FoundItem.create({
@@ -212,6 +227,19 @@ const updateFoundItem = asyncHandler(async (req, res) => {
     'description', 'location', 'dateFound',
     'uniqueMarks', 'additionalObservations',
   ];
+
+  if (
+    !req.body.itemType || 
+    !req.body.category || 
+    !req.body.location || 
+    !req.body.dateFound
+  ) {
+    throw new ApiError(400, 'Item Type, Category, Location, and Date Found are required fields.');
+  }
+
+  if (new Date(req.body.dateFound) > new Date()) {
+    throw new ApiError(400, 'Date Found cannot be in the future.');
+  }
 
   fieldsToUpdate.forEach((field) => {
     if (req.body[field] !== undefined) {

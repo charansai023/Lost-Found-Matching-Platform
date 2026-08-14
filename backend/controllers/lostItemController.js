@@ -18,6 +18,10 @@ const createLostItem = asyncHandler(async (req, res) => {
     location, dateLost, uniqueMarks, ownershipDetails,
   } = req.body;
 
+  if (!itemType || !category || !location || !dateLost) {
+    throw new ApiError(400, 'Item Type, Category, Location, and Date Lost are required fields.');
+  }
+
   const image = req.file ? `/uploads/${req.file.filename}` : '';
 
   const lostItem = await LostItem.create({
@@ -176,6 +180,15 @@ const updateLostItem = asyncHandler(async (req, res) => {
     'description', 'location', 'dateLost',
     'uniqueMarks', 'ownershipDetails',
   ];
+
+  if (
+    !req.body.itemType || 
+    !req.body.category || 
+    !req.body.location || 
+    !req.body.dateLost
+  ) {
+    throw new ApiError(400, 'Item Type, Category, Location, and Date Lost are required fields.');
+  }
 
   fieldsToUpdate.forEach((field) => {
     if (req.body[field] !== undefined) {

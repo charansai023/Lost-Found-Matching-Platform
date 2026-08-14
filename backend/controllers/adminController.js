@@ -224,7 +224,12 @@ const markMatchReturned = asyncHandler(async (req, res) => {
     .populate({ path: 'foundItem', select: '+uniqueMarks +additionalObservations', populate: { path: 'user', select: 'name email' } });
 
   // --- Reward Points Logic ---
-  if (!match.isRewarded && updatedMatch.foundItem && updatedMatch.foundItem.user) {
+  const finderIdStr = updatedMatch.foundItem?.user?._id?.toString();
+  const loserIdStr = updatedMatch.lostItem?.user?._id?.toString() || updatedMatch.lostItem?.user?.toString();
+
+  const isSelfMatch = finderIdStr && loserIdStr && finderIdStr === loserIdStr;
+
+  if (!match.isRewarded && updatedMatch.foundItem && updatedMatch.foundItem.user && !isSelfMatch) {
     const finderId = updatedMatch.foundItem.user._id;
     const category = updatedMatch.foundItem.category;
     const pointsToAward = await getPointsForCategory(category);

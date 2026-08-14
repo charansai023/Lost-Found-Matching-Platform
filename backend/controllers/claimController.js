@@ -32,6 +32,10 @@ const createClaim = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Found item not found');
   }
 
+  if (foundItem.user.toString() === req.user._id.toString()) {
+    throw new ApiError(403, 'You cannot claim a found item that you reported.');
+  }
+
   // Ensure item is claimable
   if (['Verified', 'Returned', 'Resolved', 'Closed'].includes(foundItem.status)) {
     throw new ApiError(400, `This found item is no longer available for claiming (Status: ${foundItem.status})`);
