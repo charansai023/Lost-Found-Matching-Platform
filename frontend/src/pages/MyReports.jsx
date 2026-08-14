@@ -9,7 +9,7 @@ import Loader from '../components/Loader';
 import './MyReports.css';
 
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace('/api', '');
-const imageUrl = (path) => (path ? `${API_ORIGIN}${path}` : null);
+const imageUrl = (path) => (path ? (path.startsWith('http') ? path : `${API_ORIGIN}${path}`) : null);
 
 const MATCH_LEVEL_COLOR = {
   'High Match': { bg: '#dcfce7', color: '#15803d' },

@@ -14,7 +14,7 @@ const ItemCard = ({ item, type = 'lost', onEdit, onDelete, showActions = false }
   const dateLabel = type === 'lost' ? 'Date Lost' : 'Date Found';
   const dateValue = type === 'lost' ? item.dateLost : item.dateFound;
   const detailPath = `/${type}-items/${item._id}`;
-  const imageUrl = item.image ? `${API_ORIGIN}${item.image}` : null;
+  const imageUrl = item.image ? (item.image.startsWith('http') ? item.image : `${API_ORIGIN}${item.image}`) : null;
 
   return (
     <div className="item-card">

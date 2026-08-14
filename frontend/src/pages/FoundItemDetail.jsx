@@ -54,7 +54,7 @@ const FoundItemDetail = () => {
     );
   }
 
-  const imageUrl = item.image ? `${API_ORIGIN}${item.image}` : null;
+  const imageUrl = item.image ? (item.image.startsWith('http') ? item.image : `${API_ORIGIN}${item.image}`) : null;
 
   return (
     <div className="item-detail-page">

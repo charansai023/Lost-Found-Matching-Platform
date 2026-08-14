@@ -24,7 +24,7 @@ import useAuth from '../hooks/useAuth';
 import './AdminDashboard.css';
 
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace('/api', '');
-const imageUrl = (path) => (path ? `${API_ORIGIN}${path}` : null);
+const imageUrl = (path) => (path ? (path.startsWith('http') ? path : `${API_ORIGIN}${path}`) : null);
 
 // ─────────────────────────────────────────────
 // Sub-pages rendered inside the admin layout
