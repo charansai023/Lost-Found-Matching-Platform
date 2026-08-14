@@ -22,7 +22,7 @@ const createLostItem = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Item Type, Category, Location, and Date Lost are required fields.');
   }
 
-  const image = req.file ? `/uploads/${req.file.filename}` : '';
+  const image = req.file ? req.file.path : '';
 
   const lostItem = await LostItem.create({
     user: req.user._id,
@@ -197,7 +197,7 @@ const updateLostItem = asyncHandler(async (req, res) => {
   });
 
   if (req.file) {
-    lostItem.image = `/uploads/${req.file.filename}`;
+    lostItem.image = req.file.path;
   }
 
   lostItem.matchingStatus = 'processing';

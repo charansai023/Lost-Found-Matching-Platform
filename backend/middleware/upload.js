@@ -1,24 +1,27 @@
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const ApiError = require('../utils/ApiError');
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
-// Make sure the uploads folder exists before we try to save anything into it
-const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+// Configure Cloudinary using environment variables
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-// Configure where and how uploaded files are stored on disk
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    // Prefix the file with a timestamp so filenames never collide
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const extension = path.extname(file.originalname);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${extension}`);
+// Configure CloudinaryStorage for multer
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'lost-and-found',
+    allowed_formats: ['jpeg', 'jpg', 'png', 'webp'],
+    // Add a unique prefix to filenames (optional but good practice)
+    public_id: (req, file) => {
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      return `${file.fieldname}-${uniqueSuffix}`;
+    },
   },
 });
 

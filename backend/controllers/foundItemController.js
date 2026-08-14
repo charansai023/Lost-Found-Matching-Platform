@@ -35,7 +35,7 @@ const createFoundItem = asyncHandler(async (req, res) => {
     }
   }
 
-  const image = req.file ? `/uploads/${req.file.filename}` : '';
+  const image = req.file ? req.file.path : '';
 
   const foundItem = await FoundItem.create({
     user: req.user._id,
@@ -248,7 +248,7 @@ const updateFoundItem = asyncHandler(async (req, res) => {
   });
 
   if (req.file) {
-    foundItem.image = `/uploads/${req.file.filename}`;
+    foundItem.image = req.file.path;
   }
 
   foundItem.matchingStatus = 'processing';
