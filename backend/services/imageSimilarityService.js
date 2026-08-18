@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const http = require('http');
 
 /**
  * Semantic AI Image Similarity Service
@@ -24,6 +25,39 @@ const resolveImagePath = (imageRelPath) => {
   const filename = path.basename(imageRelPath);
   const uploadsPath = path.join(__dirname, '..', 'uploads', filename);
   if (fs.existsSync(uploadsPath)) return uploadsPath;
+
+  return null;
+};
+
+/**
+ * Loads image Buffer from an HTTP/HTTPS URL (e.g., Cloudinary) or local filesystem
+ */
+const getImageBuffer = async (imagePathOrUrl) => {
+  if (!imagePathOrUrl) return null;
+
+  if (imagePathOrUrl.startsWith('http://') || imagePathOrUrl.startsWith('https://')) {
+    return new Promise((resolve) => {
+      const client = imagePathOrUrl.startsWith('https') ? https : http;
+      client
+        .get(imagePathOrUrl, (res) => {
+          if (res.statusCode !== 200) return resolve(null);
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+          res.on('error', () => resolve(null));
+        })
+        .on('error', () => resolve(null));
+    });
+  }
+
+  const localPath = resolveImagePath(imagePathOrUrl);
+  if (localPath && fs.existsSync(localPath)) {
+    try {
+      return fs.readFileSync(localPath);
+    } catch {
+      return null;
+    }
+  }
 
   return null;
 };
@@ -63,19 +97,21 @@ const calculateCosineSimilarity = (vecA, vecB) => {
   if (normA === 0 || normB === 0) return 0;
   
   const correlation = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-  // Map correlation from [-1, 1] to [0, 1] or clamp it if we only want positive correlation
-  // For images, we just take max(0, correlation)
   return Math.max(0, Math.min(1, correlation));
 };
 
 /**
  * High-Dimensional Semantic Neural Feature Embedder (512 Dimensions)
- * Extracts spatial aspect ratio, high-frequency shape contours, object geometry, 
- * and deep structural features rather than background color.
+ * Accepts either a Buffer or a filePath string.
  */
-const extractSemanticEmbedding = (filePath) => {
+const extractSemanticEmbedding = (bufferOrPath) => {
   try {
-    const buffer = fs.readFileSync(filePath);
+    let buffer = null;
+    if (Buffer.isBuffer(bufferOrPath)) {
+      buffer = bufferOrPath;
+    } else if (typeof bufferOrPath === 'string') {
+      buffer = fs.readFileSync(bufferOrPath);
+    }
     if (!buffer || buffer.length < 100) return null;
 
     // 512-dimensional semantic embedding vector
@@ -107,7 +143,6 @@ const extractSemanticEmbedding = (filePath) => {
         const count = end - start;
         const mean = blockSum / count;
         const variance = Math.max(0, (blockSqSum / count) - (mean * mean));
-        // High frequency texture vs flat surface signature
         embedding[256 + i] = Math.sqrt(variance);
       }
     }
@@ -121,16 +156,16 @@ const extractSemanticEmbedding = (filePath) => {
 
 /**
  * Google Gemini Vision API Semantic Analyzer
- * Analyzes object content, category, shape, and visual similarity.
+ * Accepts Buffers for image content.
  */
-const analyzeWithGeminiVision = async (filePathA, filePathB, apiKey) => {
+const analyzeWithGeminiVision = async (bufferA, bufferB, apiKey) => {
   return new Promise((resolve) => {
     try {
-      const fileDataA = fs.readFileSync(filePathA).toString('base64');
-      const fileDataB = fs.readFileSync(filePathB).toString('base64');
+      const fileDataA = bufferA.toString('base64');
+      const fileDataB = bufferB.toString('base64');
 
-      const mimeA = filePathA.endsWith('.png') ? 'image/png' : 'image/jpeg';
-      const mimeB = filePathB.endsWith('.png') ? 'image/png' : 'image/jpeg';
+      const mimeA = 'image/jpeg';
+      const mimeB = 'image/jpeg';
 
       const promptText = `You are an expert AI vision system for a Lost & Found platform. 
 Compare these two images of lost/found items carefully based on OBJECT CONTENT, OBJECT CATEGORY, SHAPE, AND PURPOSE — IGNORE PLAIN COLOR SIMILARITIES.
@@ -216,6 +251,7 @@ Respond ONLY with a valid JSON object in this exact format:
 
 /**
  * Primary Service Method: Computes semantic image embedding similarity score (0-100%)
+ * Works with both Cloudinary URLs and local filesystem image paths.
  */
 const compareImagesSemantically = async (imagePath1, imagePath2) => {
   if (!imagePath1 || !imagePath2) {
@@ -227,31 +263,31 @@ const compareImagesSemantically = async (imagePath1, imagePath2) => {
     };
   }
 
-  const realPath1 = resolveImagePath(imagePath1);
-  const realPath2 = resolveImagePath(imagePath2);
-
-  if (!realPath1 || !realPath2) {
-    return {
-      similarityScore: 0,
-      engine: 'None',
-      reasoning: 'Image file not found on disk',
-      sameObjectCategory: false,
-    };
-  }
-
-  if (realPath1 === realPath2) {
+  if (imagePath1 === imagePath2) {
     return {
       similarityScore: 100,
       engine: 'Identical File',
-      reasoning: 'Exact same image file',
+      reasoning: 'Exact same image reference',
       sameObjectCategory: true,
+    };
+  }
+
+  const bufferA = await getImageBuffer(imagePath1);
+  const bufferB = await getImageBuffer(imagePath2);
+
+  if (!bufferA || !bufferB) {
+    return {
+      similarityScore: 0,
+      engine: 'None',
+      reasoning: 'Image could not be loaded',
+      sameObjectCategory: false,
     };
   }
 
   // 1. Prefer Gemini Vision API if GEMINI_API_KEY is available in .env
   const geminiApiKey = process.env.GEMINI_API_KEY;
   if (geminiApiKey) {
-    const geminiResult = await analyzeWithGeminiVision(realPath1, realPath2, geminiApiKey);
+    const geminiResult = await analyzeWithGeminiVision(bufferA, bufferB, geminiApiKey);
     if (geminiResult && typeof geminiResult.semanticEmbeddingScore === 'number') {
       return {
         similarityScore: geminiResult.semanticEmbeddingScore,
@@ -265,8 +301,8 @@ const compareImagesSemantically = async (imagePath1, imagePath2) => {
   }
 
   // 2. Secondary Engine: High-Dimensional Semantic Neural Embedding Cosine Similarity
-  const embedA = extractSemanticEmbedding(realPath1);
-  const embedB = extractSemanticEmbedding(realPath2);
+  const embedA = extractSemanticEmbedding(bufferA);
+  const embedB = extractSemanticEmbedding(bufferB);
 
   if (!embedA || !embedB) {
     return {
@@ -296,4 +332,5 @@ module.exports = {
   extractSemanticEmbedding,
   calculateCosineSimilarity,
   resolveImagePath,
+  getImageBuffer,
 };

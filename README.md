@@ -1,55 +1,67 @@
 # Lost & Found Matching Platform
 
-A full-stack MERN application that lets users report lost and found items.
-Whenever a **found item** is submitted, the backend automatically compares it
-against every open **lost item** report and calculates a match score using a
-simple, transparent weighted algorithm (no AI/ML involved).
+A full-stack MERN application featuring a **Hybrid AI Matching Engine**, **real-time WebSocket notifications**, **item claim verification**, **Cloudinary cloud media storage**, and an integrated **Student Karma Rewards & Gamification system**.
+
+When a user reports a lost or found item, the platform automatically processes the report through an asynchronous matching queue and computes multi-dimensional match scores combining **Gemini Vision AI**, **512-dimensional semantic text & image embeddings**, **synonym dictionary token normalization**, **geospatial location proximity**, and **explainable AI (XAI)** reasoning.
+
+---
+
+## Key Features
+
+- 🔍 **Hybrid AI Matching Engine (v2)**: Multi-modal scoring algorithm evaluating image features (60%), title (15%), description (15%), location (5%), and category validation (5%).
+- 🖼️ **Multimodal Vision & Cloud Media Storage**: Google Gemini 1.5 Flash Vision AI analysis for visual object recognition with Cloudinary cloud storage or local storage support.
+- 💡 **Explainable AI (XAI)**: Generates human-readable explanations detailing why a match score was assigned, backed by field-level contributor checklists.
+- ⚡ **Async Background Queue**: Non-blocking background processing queue (`asyncMatchingQueue`) that executes heavy AI matching operations asynchronously.
+- 🔔 **Real-time Notifications**: Socket.IO WebSockets deliver instant notifications for new match alerts, claim status updates, and admin actions, with an in-app notification dropdown menu.
+- 📑 **Item Claim & Proof Verification**: Interactive claim modal allowing users to claim found items by uploading proof of ownership or answering security questions, reviewed via an admin verification workflow.
+- 🎁 **Gamification & Rewards System**: Student Karma Points awarded for reporting items and returning verified lost belongings, with a redeemable voucher catalog, student leaderboard, and admin redemption request management.
+- 🔐 **Role-Based Access Control (RBAC) & Profile Completion**: Differentiated user/student and admin workflows, complete profile modal enforcement, and optional university email domain restriction (`@campus.edu`).
+- 🔑 **OTP Password Recovery**: Secure email-based OTP password recovery via Nodemailer (Brevo/SMTP) with console log fallback for local development.
+- 📊 **Comprehensive Admin Management Portal**: Analytics overview dashboard, full user management, lost/found item oversight, match verification (`Verify` → `Returned` / `Reject` false positives), claim request approvals, and reward system controls.
 
 ---
 
 ## Tech Stack
 
-| Layer          | Technology                     |
-|----------------|---------------------------------|
-| Frontend       | React (Vite) + React Router     |
-| Backend        | Node.js + Express.js            |
-| Database       | MongoDB + Mongoose              |
-| Authentication | JWT + bcrypt                    |
-| File Uploads   | Multer (stored locally)         |
-| Styling        | Plain CSS                       |
+| Layer | Technology |
+| :--- | :--- |
+| **Frontend** | React (Vite 8), React Router v6, Axios, Socket.io-Client, CSS3 |
+| **Backend** | Node.js, Express.js |
+| **Database** | MongoDB, Mongoose ORM |
+| **AI / Machine Learning** | Google Gemini Vision & Text Embedding API (`text-embedding-004`), 512D Cosine Similarity Feature Extractor |
+| **Real-Time Communication**| Socket.IO |
+| **Media / File Storage** | Cloudinary (`multer-storage-cloudinary`), Multer (Local Fallback) |
+| **Authentication & Security** | JWT (JSON Web Tokens), bcryptjs |
+| **Email Services** | Nodemailer (Brevo / SMTP integration) |
+| **Deployment** | Render (Backend `render.yaml`), Vercel (Frontend `vercel.json`) |
+| **Testing** | Node native test runner (`matchingService.test.js`, `hybridMatching.test.js`) |
 
 ---
 
-## Access Control (Role-Based)
+## Access Control & Role Management
 
-Two roles exist: `user` (default on registration) and `admin`. There is no
-public "register as admin" flow — admin accounts are provisioned with the
-`create-admin` script (see below).
+Two primary user roles exist: `user` (Student/Staff) and `admin`.
 
-- **Public**: Home page, Login, Register only. A signed-out visitor cannot
-  see the Dashboard, item lists, report forms, matches, profile, or admin
-  panel.
-- **Private / User** (requires login): Dashboard, Report Lost/Found Item,
-  Lost Items List, Found Items List, Match Results, My Matches, Profile.
-  Gated by the `PrivateRoute` component on the frontend and the `protect`
-  JWT middleware on the backend.
-- **Private / Admin** (requires login + `role: "admin"`): Admin Dashboard
-  at `/admin` — platform stats, all users, all lost/found items, all
-  matches with verify/return actions, and delete controls for inappropriate
-  reports. Gated by `AdminRoute` on the frontend and `protect` + `isAdmin`
-  middleware (in that order) on the backend. Non-admins hitting `/admin`
-  are redirected to `/dashboard` rather than `/login`, since they're
-  authenticated — just not authorized for that page.
+- **Public**: Home landing page, Login, Register, Forgot Password / OTP Reset.
+- **Private / User** (`user` role): Dashboard, Report Lost Item, Report Found Item, Item Listings & Detail Views, Claim Modal, My Reports & Matches, Rewards Dashboard, Leaderboard, Voucher Redemption, Profile Management.
+- **Private / Admin** (`admin` role): Admin Management Portal (`/admin`), Platform Statistics, User Directory, Lost & Found Item Moderation, Match Verification Pipeline, Claim Request Approvals, Rewards System Configuration, and Voucher Redemption Request Management.
 
-### Creating the first admin account
+### Admin Provisioning & Seeding
+
+Admin accounts can be seeded or created using the CLI helper scripts:
 
 ```bash
 cd backend
-npm run create-admin -- "Admin Name" admin@example.com "StrongPassword123"
-```
 
-Running this against an email that already has a regular account promotes
-it to admin instead of creating a duplicate.
+# Seed or create default admin account (reads credentials from ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD in .env)
+npm run seed:admin
+
+# Reset password for an existing admin account
+npm run seed:admin -- --reset
+
+# Create or promote a specific user to admin manually
+npm run create-admin -- "Admin Name" admin@campus.edu "StrongPassword123"
+```
 
 ---
 
@@ -59,29 +71,46 @@ it to admin instead of creating a duplicate.
 lost-and-found-platform/
 │
 ├── backend/
-│   ├── controllers/     # Request handlers (business logic entry points)
-│   ├── middleware/      # auth, error handling, file upload, validation
-│   ├── models/          # Mongoose schemas: User, LostItem, FoundItem
-│   ├── routes/          # Express route definitions
-│   ├── services/        # matchingService.js — the scoring algorithm
-│   ├── uploads/          # Uploaded images are stored here
-│   ├── config/           # Database connection setup
-│   ├── utils/             # asyncHandler, ApiError, apiResponse helpers
-│   ├── app.js             # Express app setup (middleware + routes)
-│   ├── server.js           # Entry point — connects DB and starts server
+│   ├── config/              # MongoDB connection & Cloudinary setup
+│   ├── controllers/         # Request handlers (Auth, Lost/Found, Matches, Claims, Notifications, Rewards, Admin)
+│   ├── middleware/          # JWT Auth, Admin check, Error handling, Multer image upload, Input validation
+│   ├── models/              # Mongoose Schemas (User, LostItem, FoundItem, Match, Claim, Notification, PasswordOTP, RewardConfig, RewardHistory, RedemptionRequest)
+│   ├── routes/              # Express API route definitions
+│   ├── scripts/             # Admin seeding & password reset tools (createAdmin.js, seedAdmin.js, recalculateMatches.js)
+│   ├── services/            # Core business logic:
+│   │   ├── matchingService.js       # Hybrid AI Engine scoring & XAI explanation generator
+│   │   ├── imageSimilarityService.js# Gemini Vision AI & 512D image feature vector extractor
+│   │   ├── textEmbeddingService.js # Gemini Text Embeddings, local vector generator & synonym normalizer
+│   │   ├── asyncMatchingQueue.js   # Non-blocking async background job matching queue
+│   │   ├── socketService.js        # Socket.IO connection manager & real-time notification emitter
+│   │   └── rewardService.js        # Karma points calculator & reward history recorder
+│   ├── tests/               # Matching engine integration test suites (matchingService.test.js, hybridMatching.test.js)
+│   ├── uploads/             # Static file storage for local image fallback
+│   ├── utils/               # ApiError, ApiResponse, asyncHandler helpers
+│   ├── app.js               # Express application configuration & CORS policy
+│   ├── server.js            # Node HTTP server entry point with Socket.IO integration
 │   └── package.json
 │
-└── frontend/
-    ├── src/
-    │   ├── components/    # Navbar, ItemCard, MatchBadge, Loader, PrivateRoute
-    │   ├── pages/           # Home, Login, Register, Dashboard, report forms,
-    │   │                       item lists, MatchResults, Profile
-    │   ├── services/         # Axios instance + one service file per resource
-    │   ├── context/           # AuthContext (login/register/logout state)
-    │   ├── hooks/               # useAuth
-    │   ├── App.jsx               # Route definitions
-    │   └── main.jsx
-    └── package.json
+├── frontend/
+│   ├── public/              # Static assets & favicon
+│   ├── src/
+│   │   ├── components/      # Navbar, ItemCard, MatchBadge, NotificationBell, AiMatchAnalysis, ClaimModal, CompleteProfile, IFoundThisItemModal, PrivateRoute, AdminRoute, Loader
+│   │   ├── context/         # AuthContext (JWT handling, user state & socket connectivity)
+│   │   ├── hooks/           # Custom React hooks (useAuth)
+│   │   ├── pages/           # Application views:
+│   │   │   ├── Admin/       # Admin rewards settings & redemption approval views
+│   │   │   ├── Student/     # Student rewards dashboard, leaderboard & voucher redemption
+│   │   │   ├── Home.jsx, Login.jsx, Register.jsx, ForgotPassword.jsx
+│   │   │   ├── Dashboard.jsx, LostItemsList.jsx, FoundItemsList.jsx, LostItemDetail.jsx, FoundItemDetail.jsx
+│   │   │   ├── ReportLostItem.jsx, ReportFoundItem.jsx, MyReports.jsx, Profile.jsx, AdminDashboard.jsx
+│   │   ├── services/        # Axios API client modules (api.js, authService, itemService, matchService, claimService, notificationService, rewardService)
+│   │   ├── App.jsx          # React Router v6 route definitions & layout structure
+│   │   └── main.jsx         # Application entry point
+│   ├── vercel.json          # Vercel deployment configuration
+│   ├── vite.config.js       # Vite build configuration
+│   └── package.json
+│
+└── render.yaml              # Render backend deployment configuration
 ```
 
 ---
@@ -90,189 +119,276 @@ lost-and-found-platform/
 
 ### Prerequisites
 
-- Node.js 18+
-- A running MongoDB instance (local or MongoDB Atlas)
+- **Node.js**: v18.x or higher
+- **Database**: Running MongoDB instance (Local or MongoDB Atlas)
+- **Optional Services**:
+  - Cloudinary account for cloud image uploads
+  - Google Gemini API key for AI vision & semantic text embedding
+  - SMTP credentials (e.g. Brevo) for email notifications & OTP password reset
 
 ### 1. Backend Setup
 
 ```bash
 cd backend
+
+# Install dependencies
 npm install
+
+# Setup environment variables
 cp .env.example .env
-# Edit .env and set your MONGO_URI and JWT_SECRET
+
+# Edit .env with your MONGO_URI, JWT_SECRET, and optional API keys
+
+# Seed default admin account
+npm run seed:admin
+
+# Start development server with Nodemon
 npm run dev
 ```
 
-The API will run at `http://localhost:5000`.
+The backend server will start at `http://localhost:5000`.
 
 ### 2. Frontend Setup
 
 ```bash
 cd frontend
+
+# Install dependencies
 npm install
+
+# Setup environment variables
 cp .env.example .env
-# Edit .env if your backend runs on a different URL
+
+# Start Vite development server
 npm run dev
 ```
 
-The app will run at `http://localhost:5173`.
+The frontend application will be available at `http://localhost:5173`.
 
 ---
 
 ## Environment Variables
 
-### Backend (`backend/.env`)
+### Backend Environment Variables (`backend/.env`)
 
-| Variable         | Description                                  | Example                                    |
-|-------------------|-----------------------------------------------|---------------------------------------------|
-| `PORT`             | Port the Express server listens on            | `5000`                                       |
-| `MONGO_URI`        | MongoDB connection string                     | `mongodb://127.0.0.1:27017/lost-and-found`  |
-| `JWT_SECRET`       | Secret used to sign JWTs                       | a long random string                        |
-| `JWT_EXPIRES_IN`   | How long tokens stay valid                     | `7d`                                         |
-| `CLIENT_URL`       | Frontend origin, used for CORS                  | `http://localhost:5173`                     |
+| Variable | Description | Default / Example |
+| :--- | :--- | :--- |
+| `PORT` | Backend server port | `5000` |
+| `NODE_ENV` | Environment mode (`development` / `production`) | `development` |
+| `CLIENT_URL` | Frontend URL for CORS authorization | `http://localhost:5173` |
+| `MONGO_URI` | MongoDB connection URI | `mongodb://127.0.0.1:27017/lost-and-found` |
+| `JWT_SECRET` | Secret key for signing JSON Web Tokens | `your_secure_jwt_secret_key` |
+| `JWT_EXPIRES_IN` | JWT expiration timeframe | `7d` |
+| `ADMIN_NAME` | Default admin account name for seeder | `Administrator` |
+| `ADMIN_EMAIL` | Default admin account email for seeder | `admin@campus.com` |
+| `ADMIN_PASSWORD` | Default admin account password for seeder | `Admin@123` |
+| `RESTRICT_EMAIL_DOMAIN` | Restrict user registration to specified domains | `false` |
+| `ALLOWED_EMAIL_DOMAINS` | Comma-separated list of allowed email domains | `campus.edu,college.edu` |
+| `GEMINI_API_KEY` | *(Optional)* Google Gemini API key for Vision & Embeddings | `AIzaSy...` |
+| `AI_IMAGE_MATCH_THRESHOLD`| Score threshold for high AI match classification | `80` |
+| `CLOUDINARY_CLOUD_NAME` | *(Optional)* Cloudinary Cloud Name for image storage | `your_cloud_name` |
+| `CLOUDINARY_API_KEY` | *(Optional)* Cloudinary API Key | `1234567890` |
+| `CLOUDINARY_API_SECRET` | *(Optional)* Cloudinary API Secret | `your_cloudinary_secret` |
+| `SMTP_HOST` | *(Optional)* SMTP server hostname for emails & OTP | `smtp-relay.brevo.com` |
+| `SMTP_PORT` | *(Optional)* SMTP port | `587` |
+| `SMTP_USER` | *(Optional)* SMTP user login | `your_smtp_login` |
+| `SMTP_PASS` | *(Optional)* SMTP password | `your_smtp_password` |
+| `FROM_EMAIL` | *(Optional)* Sender email address | `no-reply@campus.edu` |
+| `FROM_NAME` | *(Optional)* Sender display name | `Lost & Found Platform` |
 
-### Frontend (`frontend/.env`)
+### Frontend Environment Variables (`frontend/.env`)
 
-| Variable              | Description                | Example                          |
-|------------------------|------------------------------|------------------------------------|
-| `VITE_API_BASE_URL`     | Base URL of the backend API   | `http://localhost:5000/api`       |
+| Variable | Description | Example |
+| :--- | :--- | :--- |
+| `VITE_API_BASE_URL` | Backend API base URL | `http://localhost:5000/api` |
 
 ---
 
 ## API Documentation
 
-All responses follow this shape:
+All API responses strictly adhere to the standardized response envelope:
 
 ```json
 {
   "success": true,
-  "message": "Descriptive message",
+  "message": "Descriptive response message",
   "data": {}
 }
 ```
 
-### Auth
+### Authentication & Profile (`/api/auth`)
 
-| Method | Route               | Access  | Description             |
-|--------|----------------------|---------|--------------------------|
-| POST   | `/api/auth/register`  | Public  | Create a new account      |
-| POST   | `/api/auth/login`      | Public  | Log in, returns a JWT       |
-| GET    | `/api/auth/me`          | Private | Get the logged-in user's profile |
+| Method | Route | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | Public | Register a new user account |
+| `POST` | `/api/auth/login` | Public | Authenticate user & return JWT token |
+| `POST` | `/api/auth/forgot-password/send-otp` | Public | Send password reset OTP code via email |
+| `POST` | `/api/auth/forgot-password/verify-otp` | Public | Verify validity of 6-digit OTP code |
+| `POST` | `/api/auth/forgot-password/reset` | Public | Reset account password using verified OTP |
+| `GET` | `/api/auth/me` | Private | Get profile details of authenticated user |
+| `PUT` | `/api/auth/me` | Private | Update authenticated user's profile details |
+| `PUT` | `/api/auth/complete-profile` | Private | Complete mandatory initial profile setup |
 
-### Lost Items
+### Lost Items (`/api/lost`)
 
-| Method | Route               | Access  | Description                     |
-|--------|----------------------|---------|-----------------------------------|
-| POST   | `/api/lost`            | Private | Create a lost item report (multipart/form-data, field `image` optional) |
-| GET    | `/api/lost`             | Private | List lost items — supports `search`, `category`, `location`, `page`, `limit` query params |
-| GET    | `/api/lost/:id`          | Private | Get one lost item                 |
-| PUT    | `/api/lost/:id`           | Private | Update a lost item (owner only)     |
-| DELETE | `/api/lost/:id`            | Private | Delete a lost item (owner only)       |
+| Method | Route | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/lost` | Private | Report a lost item (supports image upload via `multipart/form-data`) |
+| `GET` | `/api/lost` | Private | Search & list lost items (supports `search`, `category`, `location`, `page`, `limit`) |
+| `GET` | `/api/lost/:id` | Private | Retrieve detailed view of a specific lost item |
+| `PUT` | `/api/lost/:id` | Private | Update lost item report (owner only) |
+| `DELETE` | `/api/lost/:id` | Private | Delete lost item report (owner only) |
 
-### Found Items
+### Found Items (`/api/found`)
 
-| Method | Route                | Access  | Description                                                          |
-|--------|------------------------|---------|------------------------------------------------------------------------|
-| POST   | `/api/found`             | Private | Create a found item report. The response includes a `matches` array comparing it against every open lost item. |
-| GET    | `/api/found`              | Private | List found items — supports the same query params as lost items       |
-| GET    | `/api/found/:id`           | Private | Get one found item                                                     |
-| PUT    | `/api/found/:id`            | Private | Update a found item (owner only)                                        |
-| DELETE | `/api/found/:id`             | Private | Delete a found item (owner only)                                          |
+| Method | Route | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/found` | Private | Report a found item (triggers non-blocking async match queue) |
+| `GET` | `/api/found` | Private | Search & list found items (supports filtering & pagination) |
+| `GET` | `/api/found/:id` | Private | Retrieve detailed view of a specific found item |
+| `PUT` | `/api/found/:id` | Private | Update found item report (owner only) |
+| `DELETE` | `/api/found/:id` | Private | Delete found item report (owner only) |
 
-### Matches
+### Matches & AI Analysis (`/api/matches`)
 
-| Method | Route                     | Access  | Description                                          |
-|--------|-----------------------------|---------|---------------------------------------------------------|
-| GET    | `/api/matches`                | Private | Persisted matches (score >= 60) for every found item, grouped by found item |
-| GET    | `/api/matches/:foundItemId`     | Private | Persisted matches for one specific found item                |
+| Method | Route | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/matches` | Private | Fetch all calculated match records (score >= 40) |
+| `GET` | `/api/matches/:foundItemId` | Private | Fetch match records for a specific found item |
+| `GET` | `/api/matches/status/:itemType/:itemId` | Private | Check async matching queue status for a reported item |
 
-Matches are calculated once, when a found item is created, and persisted to
-their own `Match` collection (rather than recalculated on every request).
-This is what lets an admin verify a match and mark it returned without that
-state getting lost.
+### Item Claims (`/api/claims`)
 
-### My Reports & Matches (User)
+| Method | Route | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/claims` | Private | Submit ownership claim for a found item with text proof/answers & optional proof image |
+| `GET` | `/api/claims/my-claims` | Private | List claims submitted by the logged-in user |
 
-| Method | Route              | Access  | Description                                  |
-|--------|----------------------|---------|-------------------------------------------------|
-| GET    | `/api/my/lost`         | Private | Lost items reported by the logged-in user         |
-| GET    | `/api/my/found`         | Private | Found items reported by the logged-in user          |
-| GET    | `/api/my/matches`        | Private | Matches involving any of the user's own reports       |
-| PUT    | `/api/auth/me`             | Private | Update the logged-in user's own name                    |
+### Real-time Notifications (`/api/notifications`)
 
-### Admin
+| Method | Route | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/notifications` | Private | Fetch notifications for logged-in user |
+| `PATCH` | `/api/notifications/read-all` | Private | Mark all notifications as read |
+| `PATCH` | `/api/notifications/:id/read` | Private | Mark specific notification as read |
+| `DELETE` | `/api/notifications/:id` | Private | Delete notification |
 
-| Method | Route                          | Access | Description                                              |
-|--------|----------------------------------|--------|-------------------------------------------------------------|
-| GET    | `/api/admin/stats`                 | Admin  | Platform-wide statistics                                     |
-| GET    | `/api/admin/users`                   | Admin  | List every registered user                                     |
-| GET    | `/api/admin/lost`                      | Admin  | List every lost item report                                      |
-| GET    | `/api/admin/found`                       | Admin  | List every found item report                                       |
-| GET    | `/api/admin/matches`                       | Admin  | List every match record                                               |
-| PUT    | `/api/admin/match/:id/verify`                | Admin  | Mark a match as verified (confirms it's really the same item)          |
-| PUT    | `/api/admin/match/:id/reject`                  | Admin  | Reject a match as a false positive — hides it from both users            |
-| PUT    | `/api/admin/match/:id/returned`                | Admin  | Mark a verified match as returned (also resolves the underlying reports) |
-| DELETE | `/api/admin/lost/:id`                            | Admin  | Delete an inappropriate/spam lost item report                            |
-| DELETE | `/api/admin/found/:id`                             | Admin  | Delete an inappropriate/spam found item report                             |
+### Karma Rewards & Gamification (`/api/rewards`)
 
-**Verify → Returned workflow:** a match cannot be marked `returned` until it
-has first been marked `verified`. This mirrors how a real lost-and-found
-office works — the algorithm's high score is a lead, not a guarantee, so a
-human confirms it before the item is handed back. Rejecting a match (a
-false positive) hides it from both users' match lists but keeps the record
-for admin audit; rejected matches cannot be returned, and verifying a
-match clears any earlier rejection.
+| Method | Route | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/rewards/my-rewards` | Private | View student Karma points balance, tier status & points history |
+| `GET` | `/api/rewards/leaderboard` | Private | View platform-wide student leaderboard rankings |
+| `POST` | `/api/rewards/redeem` | Private | Submit request to redeem points for reward vouchers |
 
-**Why the match happened, not just the score:** every `Match` document
-stores `matchedFields` — the specific fields (category, item name,
-location, color, brand) that contributed to the score. Both the admin
-detail view and the user-facing match pages render this as a ✔ / ✘
-checklist, so nobody has to just trust a percentage.
+### Admin Management Portal (`/api/admin`)
 
----
-
-## The Matching Algorithm
-
-Located in `backend/services/matchingService.js`. It compares a found item to
-a lost item field-by-field and adds up points using plain `if` statements —
-no AI or machine learning:
-
-```text
-+30  if category matches
-+25  if item name matches
-+20  if location matches
-+15  if color matches
-+10  if brand matches
-```
-
-| Score Range | Classification    |
-|-------------|--------------------|
-| 80 - 100    | High Match          |
-| 60 - 79     | Possible Match        |
-| Below 60    | No Match                |
-
-A match result looks like:
-
-```json
-{
-  "score": 85,
-  "status": "High Match"
-}
-```
+| Method | Route | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/admin/stats` | Admin | Get platform metrics (total items, resolution rate, match stats) |
+| `GET` | `/api/admin/users` | Admin | List all registered users |
+| `GET` | `/api/admin/lost` | Admin | Manage all reported lost items |
+| `GET` | `/api/admin/found` | Admin | Manage all reported found items |
+| `GET` | `/api/admin/matches` | Admin | Review match predictions across platform |
+| `GET` | `/api/admin/match/:id` | Admin | Retrieve match detail record & explainable AI breakdown |
+| `PUT` | `/api/admin/match/:id/verify` | Admin | Verify match authenticity (confirms potential lead) |
+| `PUT` | `/api/admin/match/:id/reject` | Admin | Reject false positive match |
+| `PUT` | `/api/admin/match/:id/returned` | Admin | Mark verified item as successfully returned to owner |
+| `DELETE`| `/api/admin/lost/:id` | Admin | Remove inappropriate lost item report |
+| `DELETE`| `/api/admin/found/:id` | Admin | Remove inappropriate found item report |
+| `GET` | `/api/admin/claims` | Admin | Review all pending item claims |
+| `PUT` | `/api/admin/claim/:id/:action` | Admin | Approve (`approve`) or reject (`reject`) an item claim |
+| `GET` | `/api/admin/rewards/config` | Admin | Fetch system rewards point allocation rules |
+| `PUT` | `/api/admin/rewards/config` | Admin | Update system reward point rules |
+| `GET` | `/api/admin/rewards/requests` | Admin | List pending voucher redemption requests |
+| `PUT` | `/api/admin/rewards/request/:id/:action` | Admin | Process voucher redemption (`approve` / `reject`) |
 
 ---
 
-## Notes for Interviews / Learning
+## The Hybrid AI Matching Engine
 
-- Business logic is separated from routes: **routes → controllers →
-  services/models**.
-- Passwords are hashed with bcrypt before being saved; the password field is
-  never returned in API responses.
-- JWTs are verified in `middleware/auth.js` and attach the current user to
-  `req.user`.
-- Every controller is wrapped in `asyncHandler` so errors are forwarded to a
-  single, central `errorHandler` middleware instead of repeating try/catch
-  blocks everywhere.
-- The frontend keeps auth state in a React Context (`AuthContext`) backed by
-  `localStorage`, and a `PrivateRoute` component gates every page that
-  requires a logged-in user.
+The core matching service (`backend/services/matchingService.js`) employs a hybrid multi-modal architecture combining deep visual representation, natural language embeddings, synonym normalization, and spatial heuristics.
+
+### Weighted Scoring Formula
+
+$$\text{Final Score} = 0.60 \times S_{\text{image}} + 0.15 \times S_{\text{title}} + 0.15 \times S_{\text{description}} + 0.05 \times S_{\text{location}} + 0.05 \times S_{\text{category}}$$
+
+- **Visual Feature Analysis (60%)**: Powered by Google Gemini 1.5 Flash Vision API (or fallback 512D neural shape & contour feature vector cosine similarity).
+- **Title Semantic Embeddings (15%)**: Evaluated using Google Gemini `text-embedding-004` (or fallback local word-hashing vector cosine similarity).
+- **Description Semantic Text (15%)**: Cosine similarity of description embeddings enriched with synonym mapping.
+- **Location Similarity (5%)**: Tokenized location overlap & semantic proximity.
+- **Category Compatibility (5%)**: Category and item type validation matrix with domain constraint penalties.
+
+### Classification & Hard Caps
+
+- **High Match**: Score $\ge 70\%$
+- **Possible Match**: $40\% \le \text{Score} < 70\%$
+- **Low / No Match**: Score $< 40\%$
+
+**Smart Penalties & Hard Caps**:
+- Missing images limit maximum match score to **85%**.
+- Incompatible top-level categories apply a category penalty capping match score to **30%**.
+- Conflicting entity pairs (e.g. *Wallet vs Mobile Phone / Laptop*) are strictly capped at **20%**.
+
+---
+
+## Testing
+
+Run unit and integration test suites for the matching engine:
+
+```bash
+cd backend
+
+# Run standard matching service unit tests
+npm test
+
+# Run Hybrid AI Matching Engine integration test suite
+npm run test:hybrid
+```
+
+---
+
+## Deployment
+
+### Backend (Render Deployment)
+The repository includes a `render.yaml` infrastructure configuration. To deploy:
+1. Connect the repository to **Render**.
+2. Deploy as a Web Service selecting the `backend` directory.
+3. Configure environment variables (`MONGO_URI`, `JWT_SECRET`, `CLOUDINARY_*`, `GEMINI_API_KEY`, etc.).
+
+### Frontend (Vercel Deployment)
+The repository includes a `frontend/vercel.json` configuration for Vite SPA rewrites:
+1. Connect the project to **Vercel**.
+2. Set root directory to `frontend`.
+3. Set build command to `npm run build` and output directory to `dist`.
+4. Configure `VITE_API_BASE_URL` pointing to your deployed backend.
+
+---
+
+## Future Improvements
+
+To further enhance the platform's capabilities, user experience, and scalability, the following improvements are planned for future releases:
+
+1. 📱 **Mobile Native Applications (React Native / Flutter)**
+   - Develop dedicated iOS and Android mobile apps featuring push notifications via Firebase Cloud Messaging (FCM), native camera access for instant item snapshot reporting, and offline draft reporting.
+
+2. 📍 **GPS & Interactive Geofenced Campus Mapping**
+   - Integrate interactive maps (e.g. Leaflet / Mapbox) allowing users to place precise loss/found location pins and view heatmap clusters of lost item hotspots across campus.
+
+3. 🏷️ **QR Code & NFC Belonging Tagging**
+   - Provide printable, unique QR code / NFC tag generation for users to attach to valuable personal belongings (laptops, keys, student ID cards). Scanning a lost tag opens a 1-click anonymized return contact form.
+
+4. 🏢 **Multi-Tenant Campus & Enterprise Isolation**
+   - Expand database architecture to support multi-tenancy, enabling multiple universities or corporate campuses to run isolated lost-and-found portals under custom subdomains while sharing underlying infrastructure.
+
+5. 📄 **Automated Optical Character Recognition (OCR)**
+   - Implement Tesseract / Gemini OCR text extraction on uploaded item photos to automatically read student names, ID numbers, or labels on lost textbooks, identity cards, and equipment.
+
+6. 💬 **In-App Messaging & Anonymized Chat**
+   - Introduce an end-to-end anonymized chat system between lost item owners and item finders to facilitate safe meetup scheduling without sharing personal phone numbers or email addresses.
+
+7. 📲 **WhatsApp & SMS Automated Alerts**
+   - Integrate Twilio / WhatsApp Business API to deliver instant SMS and WhatsApp text notifications when high-confidence AI matches are detected.
+
+8. 📊 **Advanced Analytics & CSV/PDF Report Exporting**
+   - Add detailed analytics reporting for administrators, including resolution time metrics, item recovery rates, category trends, and automated PDF export generation for Lost & Found Office record keeping.

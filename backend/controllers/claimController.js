@@ -59,7 +59,7 @@ const createClaim = asyncHandler(async (req, res) => {
     }
   }
 
-  const supportingImage = req.file ? req.file.path : '';
+  const supportingImage = req.file ? (req.file.path || req.file.secure_url) : '';
 
   const claimData = {
     user: req.user._id,
