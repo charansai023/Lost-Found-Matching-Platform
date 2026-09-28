@@ -38,10 +38,26 @@ const claimSchema = new mongoose.Schema({
     enum: ['pending', 'verified', 'rejected', 'returned'],
     default: 'pending',
   },
+  // Phase 2: atomic finder-reward guard for DIRECT claims (no Match record).
+  // Flipped false→true by a conditional findOneAndUpdate when the reward is
+  // awarded, so concurrent/repeated return requests can never pay twice.
+  // Claims WITH a linked Match instead reuse the Match's existing isRewarded
+  // flag, so the reward can never be paid once per path.
+  rewardGranted: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
 });
+
+// Sparse partial index backing the atomic reward guard: only unclaimed
+// (rewardGranted: false) claims are indexed, keeping it tiny.
+claimSchema.index(
+  { _id: 1, rewardGranted: 1 },
+  { partialFilterExpression: { rewardGranted: false } }
+);
 
 module.exports = mongoose.model('Claim', claimSchema);

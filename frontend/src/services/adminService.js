@@ -69,3 +69,10 @@ export const rejectClaimAdmin = async (id) => {
   const response = await api.put(`/admin/claim/${id}/reject`);
   return response.data;
 };
+
+// Phase 2: confirm the physical handover for a verified claim.
+// Transitions claim → returned and awards the finder reward server-side.
+export const markClaimReturnedAdmin = async (id) => {
+  const response = await api.patch(`/admin/claim/${id}/return`);
+  return response.data;
+};

@@ -10,6 +10,72 @@ const { createAndSendNotification } = require('../services/socketService');
 const { getRewardLevel, getPointsForCategory } = require('../services/rewardService');
 const RewardHistory = require('../models/RewardHistory');
 const { sendClaimStatusEmail, sendRewardEarnedEmail } = require('../utils/emailService');
+const { assertValidObjectId } = require('../middleware/validate');
+
+// ─────────────────────────────────────────────────────────────────────
+// Shared helper: award finder reward exactly once (atomic).
+// Phase 2: extracted from markMatchReturned so BOTH the Match return
+// path and the new Claim return path reuse the SAME canonical logic —
+// no second reward implementation.
+// rewardFn must perform the single conditional update that claims the
+// "already rewarded" flag atomically; it resolves truthy when this
+// request won the right to award, or null when a concurrent request
+// already did. Never throws on the duplicate case — it returns null so
+// the caller can log and continue.
+// ─────────────────────────────────────────────────────────────────────
+const awardFinderRewardOnce = async ({ finderId, category, rewardFn, reasonPrefix }) => {
+  const finderUser = await User.findById(finderId);
+  if (!finderUser) {
+    console.error(`[Reward] Finder user ${finderId} not found — reward not awarded.`);
+    return null;
+  }
+
+  // ATOMIC double-award guard (pattern from the Phase 0 fix on the Match
+  // path): claim the "already rewarded" flag with a conditional update
+  // FIRST. Only the request whose update actually matches (flag still
+  // false) may award points. Two rapid invocations can no longer both
+  // pass a plain in-memory flag check.
+  const claimed = await rewardFn();
+  if (!claimed) {
+    // Another concurrent request already rewarded this return.
+    console.warn(`[Reward] ${reasonPrefix} ${category} was already rewarded — skipping duplicate award.`);
+    return null;
+  }
+
+  const pointsToAward = await getPointsForCategory(category);
+
+  finderUser.rewardPoints += pointsToAward;
+  finderUser.itemsReturned += 1;
+  finderUser.rewardLevel = getRewardLevel(finderUser.rewardPoints);
+  await finderUser.save();
+
+  await RewardHistory.create({
+    user: finderId,
+    points: pointsToAward,
+    type: 'earned',
+    reason: `Successfully returned a ${category}`,
+  });
+
+  // Send reward earned email (non-blocking, fire-and-forget). Email is not
+  // a project feature (no SMTP configured) but the call is kept harmless.
+  sendRewardEarnedEmail({
+    userEmail: finderUser.email,
+    userName: finderUser.name,
+    rewardType: `Successfully returned a ${category}`,
+    pointsEarned: pointsToAward,
+    rewardLevel: finderUser.rewardLevel,
+  }).catch((emailErr) => {
+    console.error('[Reward] Failed to send reward-earned email:', {
+      to: finderUser.email,
+      finderId,
+      points: pointsToAward,
+      code: emailErr.code,
+      message: emailErr.message,
+    });
+  });
+
+  return { pointsToAward, finderUser };
+};
 
 // @desc    Get all registered users (with contact info visible to admin)
 // @route   GET /api/admin/users
@@ -224,6 +290,8 @@ const markMatchReturned = asyncHandler(async (req, res) => {
     .populate({ path: 'foundItem', select: '+uniqueMarks +additionalObservations', populate: { path: 'user', select: 'name email' } });
 
   // --- Reward Points Logic ---
+  // Finder = the user who reported the found item (authoritative DB
+  // relationship — never the request body). Owner never gets the reward.
   const finderIdStr = updatedMatch.foundItem?.user?._id?.toString();
   const loserIdStr = updatedMatch.lostItem?.user?._id?.toString() || updatedMatch.lostItem?.user?.toString();
 
@@ -232,56 +300,23 @@ const markMatchReturned = asyncHandler(async (req, res) => {
   if (updatedMatch.foundItem && updatedMatch.foundItem.user && !isSelfMatch) {
     const finderId = updatedMatch.foundItem.user._id;
     const category = updatedMatch.foundItem.category;
-    const pointsToAward = await getPointsForCategory(category);
-    
-    const finderUser = await User.findById(finderId);
-    if (finderUser) {
-      // ATOMIC double-award guard: claim the isRewarded flag with a
-      // conditional update FIRST. Only the request whose update actually
-      // matches (isRewarded was still false) may award points. Two rapid
-      // invocations can no longer both pass a plain in-memory flag check.
-      const claimed = await Match.findOneAndUpdate(
-        { _id: match._id, isRewarded: false },
-        { $set: { isRewarded: true } },
-        { new: true }
-      );
 
-      if (!claimed) {
-        // Another concurrent request already rewarded this match.
-        console.warn(`[Admin] Match ${match._id} was already rewarded — skipping duplicate award.`);
-      } else {
-        // Keep the in-memory doc consistent with the database.
-        match.isRewarded = true;
+    // Shared canonical reward logic (atomic double-award guard inside).
+    const rewardResult = await awardFinderRewardOnce({
+      finderId,
+      category,
+      reasonPrefix: `Match ${match._id}`,
+      rewardFn: () =>
+        Match.findOneAndUpdate(
+          { _id: match._id, isRewarded: false },
+          { $set: { isRewarded: true } },
+          { new: true }
+        ),
+    });
 
-        finderUser.rewardPoints += pointsToAward;
-        finderUser.itemsReturned += 1;
-        finderUser.rewardLevel = getRewardLevel(finderUser.rewardPoints);
-        await finderUser.save();
-
-        await RewardHistory.create({
-          user: finderId,
-          points: pointsToAward,
-          type: 'earned',
-          reason: `Successfully returned a ${category}`,
-        });
-
-        // Send reward earned email (non-blocking, fire-and-forget)
-        sendRewardEarnedEmail({
-          userEmail: finderUser.email,
-          userName: finderUser.name,
-          rewardType: `Successfully returned a ${category}`,
-          pointsEarned: pointsToAward,
-          rewardLevel: finderUser.rewardLevel,
-        }).catch((emailErr) => {
-          console.error('[Admin] Failed to send reward-earned email:', {
-            to: finderUser.email,
-            finderId: finderId,
-          points: pointsToAward,
-          code: emailErr.code,
-          message: emailErr.message,
-        });
-      });
-      }
+    if (rewardResult) {
+      // Keep the in-memory doc consistent with the database.
+      match.isRewarded = true;
     }
   }
 
@@ -377,13 +412,23 @@ const updateClaimStatus = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Claim not found');
   }
 
+  if (claim.status === 'returned') {
+    throw new ApiError(400, 'This claim has already been returned and its status can no longer change');
+  }
+
   if (action === 'verify') {
+    if (claim.status !== 'pending') {
+      throw new ApiError(400, `Only a pending claim can be verified (current status: ${claim.status})`);
+    }
     claim.status = 'verified';
     await FoundItem.findByIdAndUpdate(claim.foundItem, { status: 'Verified' });
     if (claim.lostItem) {
       await LostItem.findByIdAndUpdate(claim.lostItem, { status: 'Verified' });
     }
   } else if (action === 'reject') {
+    if (claim.status !== 'pending') {
+      throw new ApiError(400, `Only a pending claim can be rejected (current status: ${claim.status})`);
+    }
     claim.status = 'rejected';
   } else {
     throw new ApiError(400, 'Invalid action');
@@ -430,6 +475,152 @@ const updateClaimStatus = asyncHandler(async (req, res) => {
   }
 
   sendSuccess(res, 200, `Claim ${action}ed successfully`, { claim: updatedClaim });
+});
+
+// @desc    Mark a verified claim as Returned — the physical handover happened.
+//          This completes the claim lifecycle: claim → verified → returned,
+//          and awards the FINDER (found-item reporter) their reward exactly
+//          once. Direct claims (no LostItem) are fully supported.
+// @route   PATCH /api/admin/claim/:id/return
+// @access  Private/Admin
+const markClaimReturned = asyncHandler(async (req, res) => {
+  // 1. Validate claim ID (clean 400 on malformed ids, no stack traces).
+  assertValidObjectId(req.params.id, 'Claim ID');
+
+  // 2-3. Load the claim and verify it exists.
+  const claim = await Claim.findById(req.params.id);
+  if (!claim) {
+    throw new ApiError(404, 'Claim not found');
+  }
+
+  // 4. Only a verified claim can be returned — rejects pending → returned
+  //    and rejected → returned.
+  if (claim.status === 'returned') {
+    throw new ApiError(400, 'This claim has already been marked as returned');
+  }
+  if (claim.status !== 'verified') {
+    throw new ApiError(400, `A claim must be Verified before it can be marked as Returned (current status: ${claim.status})`);
+  }
+
+  // 5. FINDER — derived ONLY from the database relationship: the user who
+  //    reported the found item. Never from the request body, the admin,
+  //    or the claimant.
+  const foundItem = await FoundItem.findById(claim.foundItem).populate('user', 'name email');
+  if (!foundItem || !foundItem.user) {
+    throw new ApiError(404, 'Found item or finder not found for this claim');
+  }
+  const finderId = foundItem.user._id;
+
+  // 6. OWNER — the claimant (the user who submitted this claim). For linked
+  //    claims this is the lost-item reporter; for direct claims it is simply
+  //    the owner who claimed. Never trusted from the request body.
+  const ownerId = claim.user;
+
+  // 7. Self-reward protection: if owner and finder are the same user, the
+  //    item is handed back but NO finder reward is awarded.
+  const isSelfReward = String(finderId) === String(ownerId);
+
+  // 8. Transition claim → returned (guard happens before any reward).
+  claim.status = 'returned';
+  await claim.save();
+
+  // 9. Keep item state consistent — mirrors the Match-path behavior
+  //    (verifyMatch sets Verified, markMatchReturned sets Returned).
+  await Promise.all([
+    FoundItem.findByIdAndUpdate(claim.foundItem, { status: 'Returned' }),
+    claim.lostItem ? LostItem.findByIdAndUpdate(claim.lostItem, { status: 'Returned' }) : Promise.resolve(),
+  ]);
+
+  // 10. Match synchronization: if this claim created/linked a Match record,
+  //     keep it in the SAME returned state and use the SAME atomic
+  //     isRewarded flag so the reward can never be paid once via the claim
+  //     path and again via the match path.
+  let linkedMatch = null;
+  if (claim.lostItem) {
+    linkedMatch = await Match.findOne({ lostItem: claim.lostItem, foundItem: claim.foundItem });
+    if (linkedMatch && linkedMatch.status !== 'Returned') {
+      linkedMatch.status = 'Returned';
+      await linkedMatch.save();
+      await LostItem.findByIdAndUpdate(claim.lostItem, { status: 'Returned' });
+    }
+  }
+
+  // 11. Award finder reward exactly once (shared canonical logic).
+  let rewardInfo = null;
+  if (!isSelfReward) {
+    const rewardFn = linkedMatch
+      ? () =>
+          Match.findOneAndUpdate(
+            { _id: linkedMatch._id, isRewarded: false },
+            { $set: { isRewarded: true } },
+            { new: true }
+          )
+      : () =>
+          Claim.findOneAndUpdate(
+            { _id: claim._id, rewardGranted: false },
+            { $set: { rewardGranted: true } },
+            { new: true }
+          );
+
+    rewardInfo = await awardFinderRewardOnce({
+      finderId,
+      category: foundItem.category,
+      reasonPrefix: `Claim ${claim._id}`,
+      rewardFn,
+    });
+  } else {
+    console.warn(`[Admin] Claim ${claim._id}: owner and finder are the same user — finder reward NOT awarded.`);
+  }
+
+  // 12. Notifications (in-app only; no email is sent for this action).
+  const itemName = foundItem.itemType || foundItem.category || 'item';
+  const ownerUser = await User.findById(ownerId).select('name');
+
+  createAndSendNotification({
+    title: '\ud83c\udf89 Item Successfully Returned!',
+    message: `Your claim for "${itemName}" has been completed — the item has been returned to you. Thank you for using Lost & Found!`,
+    notificationType: 'returned',
+    userId: ownerId,
+    relatedItem: claim.foundItem,
+    itemModel: 'FoundItem',
+    priority: 'high',
+  }).catch((e) => console.error('[Notification] claimReturned owner:', e.message));
+
+  if (!isSelfReward) {
+    createAndSendNotification({
+      title: rewardInfo ? `\ud83c\udfc1 You earned ${rewardInfo.pointsToAward} reward points!` : '\ud83d\udcdc Item Returned to Owner',
+      message: rewardInfo
+        ? `The "${itemName}" you found has been successfully returned to its owner. You earned ${rewardInfo.pointsToAward} reward points for your honesty!`
+        : `The "${itemName}" you found has been successfully returned to its owner. Thank you for your honesty!`,
+      notificationType: 'returned',
+      userId: finderId,
+      relatedItem: claim.foundItem,
+      itemModel: 'FoundItem',
+      priority: 'medium',
+    }).catch((e) => console.error('[Notification] claimReturned finder:', e.message));
+  }
+
+  createAndSendNotification({
+    title: '\ud83d\udce6 Claim Completed — Item Returned',
+    message: `Claim resolved: "${itemName}" returned to ${ownerUser?.name || 'the owner'}.`,
+    notificationType: 'item_returned',
+    isAdminNotification: true,
+    relatedItem: claim.foundItem,
+    itemModel: 'FoundItem',
+    priority: 'low',
+  }).catch((e) => console.error('[Notification] claimReturned admin:', e.message));
+
+  // 13. Clear response with the final state.
+  const updatedClaim = await Claim.findById(claim._id)
+    .populate('user', 'name email')
+    .populate('foundItem', 'itemType category location status')
+    .populate('lostItem', 'itemType category location status');
+
+  sendSuccess(res, 200, 'Claim marked as returned successfully', {
+    claim: updatedClaim,
+    rewardAwarded: Boolean(rewardInfo),
+    rewardPoints: rewardInfo ? rewardInfo.pointsToAward : 0,
+  });
 });
 
 // @desc    Get platform-wide statistics for the admin dashboard
@@ -482,4 +673,5 @@ module.exports = {
   getPlatformStats,
   getAllClaimsAdmin,
   updateClaimStatus,
+  markClaimReturned,
 };

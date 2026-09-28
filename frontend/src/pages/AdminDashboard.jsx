@@ -14,6 +14,7 @@ import {
   getAllClaimsAdmin,
   verifyClaimAdmin,
   rejectClaimAdmin,
+  markClaimReturnedAdmin,
 } from '../services/adminService';
 import { fetchNotifications, markAsRead, markAllRead, deleteNotification } from '../services/notificationService';
 import StatusBadge from '../components/StatusBadge';
@@ -30,7 +31,7 @@ const imageUrl = (path) => (path ? (path.startsWith('http') ? path : `${API_ORIG
 // Sub-pages rendered inside the admin layout
 // ─────────────────────────────────────────────
 
-const Overview = ({ stats, matches, lostItems, foundItems, claims, onVerify, onReject, onMarkReturned, onVerifyClaim, onRejectClaim, onDeleteLost, onDeleteFound }) => {
+const Overview = ({ stats, matches, lostItems, foundItems, claims, onVerify, onReject, onMarkReturned, onVerifyClaim, onRejectClaim, onMarkReturnedClaim, onDeleteLost, onDeleteFound }) => {
   const navigate = useNavigate();
   if (!stats) return <Loader />;
 
@@ -184,7 +185,7 @@ const Overview = ({ stats, matches, lostItems, foundItems, claims, onVerify, onR
         </div>
 
         <h3 className="section-title" style={{ marginTop: 32 }}>Recent Claims</h3>
-        <ClaimsTab claims={claims.slice(0, 3)} onVerify={onVerifyClaim} onReject={onRejectClaim} />
+        <ClaimsTab claims={claims.slice(0, 3)} onVerify={onVerifyClaim} onReject={onRejectClaim} onMarkReturned={onMarkReturnedClaim} />
 
         <h3 className="section-title" style={{ marginTop: 32 }}>Recent Lost Items</h3>
         <LostItemsTab items={lostItems.slice(0, 3)} onDelete={onDeleteLost} />
@@ -695,7 +696,10 @@ const MatchesTab = ({ matches, onVerify, onReject, onMarkReturned }) => {
 // ─────────────────────────────────────────────
 // Claims Review Tab
 // ─────────────────────────────────────────────
-const ClaimsTab = ({ claims, onVerify, onReject }) => {
+// Claims Review Tab — Phase 2 adds the Verified → Returned action:
+// admins confirm the physical handover, which also triggers the finder
+// reward server-side. Return actions mirror the MatchesTab pattern.
+const ClaimsTab = ({ claims, onVerify, onReject, onMarkReturned }) => {
   const [filter, setFilter] = useState('all');
   const filtered = claims.filter((c) => filter === 'all' || c.status === filter);
 
@@ -768,6 +772,12 @@ const ClaimsTab = ({ claims, onVerify, onReject }) => {
                         </button>
                         <button className="btn btn--danger admin-action-btn" onClick={() => onReject(claim._id)}>
                           ❌ Reject
+                        </button>
+                      </div>
+                    ) : claim.status === 'verified' ? (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button className="btn btn--primary admin-action-btn" onClick={() => onMarkReturned(claim._id)}>
+                          📦 Mark as Returned
                         </button>
                       </div>
                     ) : (
@@ -1073,10 +1083,26 @@ const AdminDashboard = () => {
     }
   };
 
+  // Phase 2: confirm the physical handover of a verified claim. The server
+  // awards the finder reward exactly once; the response carries the final
+  // claim state so the UI can never show a stale "Verified" row.
+  const handleClaimReturned = async (claimId) => {
+    if (!window.confirm('Confirm the item has been physically returned to the owner? This awards the finder their reward.')) return;
+    try {
+      const result = await markClaimReturnedAdmin(claimId);
+      setClaims((prev) => prev.map((c) => (c._id === claimId ? result.data.claim : c)));
+      if (result.data.rewardAwarded) {
+        window.alert(`✅ Item marked as returned. Finder awarded ${result.data.rewardPoints} reward points.`);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to mark claim as returned');
+    }
+  };
+
   const renderTabContent = () => {
     if (loading) return <Loader />;
     switch (activeTab) {
-      case 'overview': return <Overview stats={stats} matches={matches} lostItems={lostItems} foundItems={foundItems} claims={claims} onVerify={handleVerify} onReject={handleReject} onMarkReturned={handleMarkReturned} onVerifyClaim={handleVerifyClaim} onRejectClaim={handleRejectClaim} onDeleteLost={handleDeleteLost} onDeleteFound={handleDeleteFound} />;
+      case 'overview': return <Overview stats={stats} matches={matches} lostItems={lostItems} foundItems={foundItems} claims={claims} onVerify={handleVerify} onReject={handleReject} onMarkReturned={handleMarkReturned} onVerifyClaim={handleVerifyClaim} onRejectClaim={handleRejectClaim} onMarkReturnedClaim={handleClaimReturned} onDeleteLost={handleDeleteLost} onDeleteFound={handleDeleteFound} />;
       case 'users': return <UsersTab users={users} />;
       case 'lost': return <LostItemsTab items={lostItems} onDelete={handleDeleteLost} />;
       case 'found': return <FoundItemsTab items={foundItems} onDelete={handleDeleteFound} />;
@@ -1095,6 +1121,7 @@ const AdminDashboard = () => {
             claims={claims}
             onVerify={handleVerifyClaim}
             onReject={handleRejectClaim}
+            onMarkReturned={handleClaimReturned}
           />
         );
       case 'notifications': return <AdminNotificationCenter />;
@@ -1110,7 +1137,7 @@ const AdminDashboard = () => {
             </button>
           </div>
         );
-      default: return <Overview stats={stats} matches={matches} lostItems={lostItems} foundItems={foundItems} claims={claims} onVerify={handleVerify} onReject={handleReject} onMarkReturned={handleMarkReturned} onVerifyClaim={handleVerifyClaim} onRejectClaim={handleRejectClaim} onDeleteLost={handleDeleteLost} onDeleteFound={handleDeleteFound} />;
+      default: return <Overview stats={stats} matches={matches} lostItems={lostItems} foundItems={foundItems} claims={claims} onVerify={handleVerify} onReject={handleReject} onMarkReturned={handleMarkReturned} onVerifyClaim={handleVerifyClaim} onRejectClaim={handleRejectClaim} onMarkReturnedClaim={handleClaimReturned} onDeleteLost={handleDeleteLost} onDeleteFound={handleDeleteFound} />;
     }
   };
 
