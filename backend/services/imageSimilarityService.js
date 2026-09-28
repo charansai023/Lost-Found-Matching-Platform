@@ -194,11 +194,17 @@ Respond ONLY with a valid JSON object in this exact format:
 
       const options = {
         hostname: 'generativelanguage.googleapis.com',
-        path: `/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        // NOTE: 'gemini-1.5-flash' was retired by Google (404 for all keys).
+        // 'gemini-flash-latest' is a moving alias that always tracks the
+        // current Flash generation, so future model retirements won't break us.
+        path: '/v1beta/models/gemini-flash-latest:generateContent',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(requestBody),
+          // Send the key via header instead of the URL query string so it
+          // cannot leak into server/proxy access logs.
+          'x-goog-api-key': apiKey,
         },
       };
 
@@ -208,6 +214,14 @@ Respond ONLY with a valid JSON object in this exact format:
         res.on('end', () => {
           try {
             const parsed = JSON.parse(responseData);
+            // Surface API-level errors (404/429/503 etc.) instead of failing silently.
+            if (parsed.error) {
+              console.error(
+                `Gemini Vision API returned HTTP ${res.statusCode}:`,
+                parsed.error.message
+              );
+              return resolve(null);
+            }
             const textResponse = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
             if (textResponse) {
               const jsonMatch = textResponse.match(/\{[\s\S]*\}/);

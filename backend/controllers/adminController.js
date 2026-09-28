@@ -229,45 +229,59 @@ const markMatchReturned = asyncHandler(async (req, res) => {
 
   const isSelfMatch = finderIdStr && loserIdStr && finderIdStr === loserIdStr;
 
-  if (!match.isRewarded && updatedMatch.foundItem && updatedMatch.foundItem.user && !isSelfMatch) {
+  if (updatedMatch.foundItem && updatedMatch.foundItem.user && !isSelfMatch) {
     const finderId = updatedMatch.foundItem.user._id;
     const category = updatedMatch.foundItem.category;
     const pointsToAward = await getPointsForCategory(category);
     
     const finderUser = await User.findById(finderId);
     if (finderUser) {
-      finderUser.rewardPoints += pointsToAward;
-      finderUser.itemsReturned += 1;
-      finderUser.rewardLevel = getRewardLevel(finderUser.rewardPoints);
-      await finderUser.save();
+      // ATOMIC double-award guard: claim the isRewarded flag with a
+      // conditional update FIRST. Only the request whose update actually
+      // matches (isRewarded was still false) may award points. Two rapid
+      // invocations can no longer both pass a plain in-memory flag check.
+      const claimed = await Match.findOneAndUpdate(
+        { _id: match._id, isRewarded: false },
+        { $set: { isRewarded: true } },
+        { new: true }
+      );
 
-      await RewardHistory.create({
-        user: finderId,
-        points: pointsToAward,
-        type: 'earned',
-        reason: `Successfully returned a ${category}`,
-      });
+      if (!claimed) {
+        // Another concurrent request already rewarded this match.
+        console.warn(`[Admin] Match ${match._id} was already rewarded — skipping duplicate award.`);
+      } else {
+        // Keep the in-memory doc consistent with the database.
+        match.isRewarded = true;
 
-      // Mark the match as rewarded so they don't get double points
-      match.isRewarded = true;
-      await match.save();
+        finderUser.rewardPoints += pointsToAward;
+        finderUser.itemsReturned += 1;
+        finderUser.rewardLevel = getRewardLevel(finderUser.rewardPoints);
+        await finderUser.save();
 
-      // Send reward earned email (non-blocking, fire-and-forget)
-      sendRewardEarnedEmail({
-        userEmail: finderUser.email,
-        userName: finderUser.name,
-        rewardType: `Successfully returned a ${category}`,
-        pointsEarned: pointsToAward,
-        rewardLevel: finderUser.rewardLevel,
-      }).catch((emailErr) => {
-        console.error('[Admin] Failed to send reward-earned email:', {
-          to: finderUser.email,
-          finderId: finderId,
+        await RewardHistory.create({
+          user: finderId,
+          points: pointsToAward,
+          type: 'earned',
+          reason: `Successfully returned a ${category}`,
+        });
+
+        // Send reward earned email (non-blocking, fire-and-forget)
+        sendRewardEarnedEmail({
+          userEmail: finderUser.email,
+          userName: finderUser.name,
+          rewardType: `Successfully returned a ${category}`,
+          pointsEarned: pointsToAward,
+          rewardLevel: finderUser.rewardLevel,
+        }).catch((emailErr) => {
+          console.error('[Admin] Failed to send reward-earned email:', {
+            to: finderUser.email,
+            finderId: finderId,
           points: pointsToAward,
           code: emailErr.code,
           message: emailErr.message,
         });
       });
+      }
     }
   }
 

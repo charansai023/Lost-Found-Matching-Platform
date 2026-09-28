@@ -7,6 +7,7 @@ const ApiError = require('../utils/ApiError');
 const { sendSuccess } = require('../utils/apiResponse');
 const { calculateMatchScore } = require('../services/matchingService');
 const { createAndSendNotification } = require('../services/socketService');
+const { assertValidObjectId } = require('../middleware/validate');
 
 // @desc    Create a new claim request
 // @route   POST /api/claims
@@ -16,6 +17,12 @@ const createClaim = asyncHandler(async (req, res) => {
 
   if (!foundItemId) {
     throw new ApiError(400, 'Found item ID is required');
+  }
+
+  // Reject malformed ids with a clean 400 before any DB query runs.
+  assertValidObjectId(foundItemId, 'Found item ID');
+  if (lostItemId) {
+    assertValidObjectId(lostItemId, 'Lost item ID');
   }
   if (!uniqueMarks || !uniqueMarks.trim()) {
     throw new ApiError(400, 'Unique identifying marks are required');
@@ -36,8 +43,11 @@ const createClaim = asyncHandler(async (req, res) => {
     throw new ApiError(403, 'You cannot claim a found item that you reported.');
   }
 
-  // Ensure item is claimable
-  if (['Verified', 'Returned', 'Resolved', 'Closed'].includes(foundItem.status)) {
+  // Ensure item is claimable — only the REAL statuses defined by the
+  // FoundItem model (Pending | Matched | Verified | Returned).
+  // The previously listed 'Resolved'/'Closed' do not exist in the enum and
+  // were dead code; 'Pending'/'Matched' are the genuinely claimable states.
+  if (!['Pending', 'Matched'].includes(foundItem.status)) {
     throw new ApiError(400, `This found item is no longer available for claiming (Status: ${foundItem.status})`);
   }
 

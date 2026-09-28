@@ -8,6 +8,7 @@ const { findMatchesForLostItem, MATCH_THRESHOLDS } = require('../services/matchi
 const { runAsyncMatching } = require('../services/asyncMatchingQueue');
 const { getSearchQuerySynonyms } = require('../services/textEmbeddingService');
 const { createAndSendNotification } = require('../services/socketService');
+const { escapeRegex, assertValidObjectId, rejectFutureDate } = require('../middleware/validate');
 
 // @desc    Create a new lost item report and run matching against open found items
 // @route   POST /api/lost
@@ -21,6 +22,12 @@ const createLostItem = asyncHandler(async (req, res) => {
   if (!itemType || !category || !location || !dateLost) {
     throw new ApiError(400, 'Item Type, Category, Location, and Date Lost are required fields.');
   }
+
+  // Business rule: only today and previous calendar dates are allowed.
+  // Enforced server-side so a crafted request cannot bypass the frontend's
+  // date-picker max attribute. Comparison uses local calendar-day semantics
+  // (rejectFutureDate) to avoid the UTC-midnight bug with YYYY-MM-DD inputs.
+  rejectFutureDate(dateLost, 'Date Lost');
 
   const image = req.file ? (req.file.path || req.file.secure_url) : '';
 
@@ -88,22 +95,24 @@ const getLostItems = asyncHandler(async (req, res) => {
 
   if (search) {
     const synonyms = getSearchQuerySynonyms(search);
+    // Escape every term before $regex use — user input must never be
+    // interpreted as regex syntax (injection/crash prevention).
     const regexTerms = synonyms.map((term) => ({
       $or: [
-        { itemType: { $regex: term, $options: 'i' } },
-        { category: { $regex: term, $options: 'i' } },
-        { description: { $regex: term, $options: 'i' } },
+        { itemType: { $regex: escapeRegex(term), $options: 'i' } },
+        { category: { $regex: escapeRegex(term), $options: 'i' } },
+        { description: { $regex: escapeRegex(term), $options: 'i' } },
       ],
     }));
     filter.$or = regexTerms.flat();
   }
 
   if (category) {
-    filter.category = { $regex: category, $options: 'i' };
+    filter.category = { $regex: escapeRegex(category), $options: 'i' };
   }
 
   if (location) {
-    filter.location = { $regex: location, $options: 'i' };
+    filter.location = { $regex: escapeRegex(location), $options: 'i' };
   }
 
   const pageNumber = Number(page) || 1;
@@ -136,6 +145,9 @@ const getLostItems = asyncHandler(async (req, res) => {
 // @route   GET /api/lost/:id
 // @access  Private
 const getLostItemById = asyncHandler(async (req, res) => {
+  // Reject malformed ids with a clean 400 before any DB query runs.
+  assertValidObjectId(req.params.id, 'Lost item ID');
+
   const isOwnerOrAdmin = req.user.role === 'admin';
 
   let query = LostItem.findById(req.params.id).populate('user', 'name email');
@@ -174,6 +186,18 @@ const updateLostItem = asyncHandler(async (req, res) => {
   if (lostItem.user.toString() !== req.user._id.toString()) {
     throw new ApiError(403, 'You are not authorized to edit this report');
   }
+
+  if (
+    !req.body.itemType ||
+    !req.body.category ||
+    !req.body.location ||
+    !req.body.dateLost
+  ) {
+    throw new ApiError(400, 'Item Type, Category, Location, and Date Lost are required fields.');
+  }
+
+  // Same calendar-day rule as creation, applied to updates.
+  rejectFutureDate(req.body.dateLost, 'Date Lost');
 
   const fieldsToUpdate = [
     'itemType', 'category', 'color', 'brand', 'model',

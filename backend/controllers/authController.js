@@ -63,7 +63,10 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'An account with this email already exists');
   }
 
-  const role = email.toLowerCase().includes('admin') ? 'admin' : 'user';
+  // SECURITY: Role is NEVER derived from user input. Anyone could previously
+  // register an email containing "admin" and self-promote to the admin role.
+  // Admin accounts must be provisioned explicitly (scripts/seedAdmin.js or DB).
+  const role = 'user';
   const user = await User.create({ name, email, password, role });
   const token = generateToken(user._id);
 

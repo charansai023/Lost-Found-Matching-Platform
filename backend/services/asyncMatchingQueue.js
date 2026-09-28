@@ -6,32 +6,55 @@ const { calculateHybridMatchScore, MATCH_THRESHOLDS, getMatchThreshold } = requi
 const { createAndSendNotification } = require('./socketService');
 
 /**
+ * Active embedding configuration. Bump these together whenever the embedding
+ * model or its dimensionality changes, so stale cached vectors are regenerated
+ * instead of silently comparing against incompatible vectors.
+ */
+const EMBEDDING_VERSION = 'v3';
+const EMBEDDING_DIMENSION = 768; // gemini-embedding-001 with outputDimensionality: 768
+
+/**
+ * A cached embedding is only valid if it is non-empty, has exactly the
+ * expected dimension, and was produced by the current embedding version.
+ * (Old 'v2' items hold 512-dim local hash vectors that must never be mixed
+ * with 768-dim API vectors — cosine similarity between mismatched lengths
+ * returns 0 and would silently destroy the text portion of every score.)
+ */
+const isValidEmbedding = (vec) =>
+  Array.isArray(vec) && vec.length === EMBEDDING_DIMENSION;
+
+/**
  * Ensures text embeddings for an item are generated and cached in MongoDB
  */
 const ensureItemEmbeddingsCached = async (item, itemModel) => {
-  // We check if embeddings exist, if not, generate and save them
+  // Regenerate when: missing, wrong dimension, or produced by an older
+  // embedding version/model.
   let updated = false;
+  const needsRegen =
+    !isValidEmbedding(item.titleEmbedding) ||
+    !isValidEmbedding(item.descriptionEmbedding) ||
+    !isValidEmbedding(item.locationEmbedding) ||
+    item.embeddingVersion !== EMBEDDING_VERSION;
 
-  if (!item.titleEmbedding || item.titleEmbedding.length === 0) {
-    item.titleEmbedding = await generateTextEmbedding(item.itemType || item.category || '');
-    updated = true;
-  }
-  if (!item.descriptionEmbedding || item.descriptionEmbedding.length === 0) {
-    item.descriptionEmbedding = await generateTextEmbedding(item.description || '');
-    updated = true;
-  }
-  if (!item.locationEmbedding || item.locationEmbedding.length === 0) {
-    item.locationEmbedding = await generateTextEmbedding(item.location || '');
+  if (needsRegen) {
+    const [titleEmb, descEmb, locEmb] = await Promise.all([
+      generateTextEmbedding(item.itemType || item.category || ''),
+      generateTextEmbedding(item.description || ''),
+      generateTextEmbedding(item.location || ''),
+    ]);
+    item.titleEmbedding = titleEmb;
+    item.descriptionEmbedding = descEmb;
+    item.locationEmbedding = locEmb;
     updated = true;
   }
 
   if (updated) {
-    item.embeddingVersion = 'v2';
+    item.embeddingVersion = EMBEDDING_VERSION;
     await itemModel.findByIdAndUpdate(item._id, {
       titleEmbedding: item.titleEmbedding,
       descriptionEmbedding: item.descriptionEmbedding,
       locationEmbedding: item.locationEmbedding,
-      embeddingVersion: 'v2',
+      embeddingVersion: EMBEDDING_VERSION,
     });
   }
 };
@@ -236,4 +259,7 @@ module.exports = {
   matchLostItemAsync,
   matchFoundItemAsync,
   recalculateAllMatches,
+  ensureItemEmbeddingsCached,
+  EMBEDDING_VERSION,
+  EMBEDDING_DIMENSION,
 };

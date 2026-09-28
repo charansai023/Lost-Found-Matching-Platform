@@ -112,20 +112,28 @@ const calculateCosineSimilarity = (vecA, vecB) => {
 const getGeminiTextEmbedding = async (text, apiKey) => {
   return new Promise((resolve) => {
     try {
+      // NOTE: 'text-embedding-004' was retired by Google (404 for all keys).
+      // 'gemini-embedding-001' is the current supported embedding model.
       const requestBody = JSON.stringify({
-        model: 'models/text-embedding-004',
+        model: 'models/gemini-embedding-001',
         content: {
           parts: [{ text }]
-        }
+        },
+        // Pin the output dimension so every vector is mutually comparable.
+        // 768 keeps MongoDB storage compact (the model default is 3072).
+        outputDimensionality: 768
       });
 
       const options = {
         hostname: 'generativelanguage.googleapis.com',
-        path: `/v1beta/models/text-embedding-004:embedContent?key=${apiKey}`,
+        path: '/v1beta/models/gemini-embedding-001:embedContent',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(requestBody)
+          'Content-Length': Buffer.byteLength(requestBody),
+          // Send the key via header instead of the URL query string so it
+          // cannot leak into server/proxy access logs.
+          'x-goog-api-key': apiKey
         }
       };
 
@@ -139,8 +147,16 @@ const getGeminiTextEmbedding = async (text, apiKey) => {
             if (values && Array.isArray(values)) {
               return resolve(values);
             }
+            // Surface API failures (404/429/503 etc.) instead of failing silently.
+            console.error(
+              `Gemini Text Embedding API returned HTTP ${res.statusCode}:`,
+              parsed.error?.message || responseData.slice(0, 200)
+            );
           } catch (e) {
-            console.error('Failed to parse Gemini Text Embedding response:', e.message);
+            console.error(
+              `Failed to parse Gemini Text Embedding response (HTTP ${res.statusCode}):`,
+              e.message
+            );
           }
           resolve(null);
         });

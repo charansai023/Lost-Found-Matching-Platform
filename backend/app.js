@@ -13,31 +13,16 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const rewardRoutes = require('./routes/rewardRoutes');
 const adminRewardRoutes = require('./routes/adminRewardRoutes');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
-
+// Phase 1: single shared CORS origin policy (also used by Socket.IO).
+const { corsOriginHandler } = require('./config/corsOrigins');
 const app = express();
-
 // --- Global Middleware ---
-
-// Allow requests from our frontend (localhost, configured CLIENT_URL, or Vercel preview domains)
+// Allow requests from our exact production frontend, localhost development
+// origins, or any origin configured in CLIENT_URL. Arbitrary *.vercel.app
+// deployments are no longer accepted (phishing surface removed).
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl, Postman) or any localhost port
-      if (!origin || /^http:\/\/localhost(:\d+)?$/.test(origin)) {
-        return callback(null, true);
-      }
-
-      const clientUrls = (process.env.CLIENT_URL || '')
-        .split(',')
-        .map((url) => url.trim())
-        .filter(Boolean);
-
-      if (clientUrls.includes(origin) || /\.vercel\.app$/.test(origin)) {
-        return callback(null, true);
-      }
-
-      callback(new Error('Not allowed by CORS'));
-    },
+    origin: corsOriginHandler,
     credentials: true,
   })
 );

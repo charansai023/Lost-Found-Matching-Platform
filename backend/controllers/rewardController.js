@@ -4,7 +4,7 @@ const RedemptionRequest = require('../models/RedemptionRequest');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { sendSuccess } = require('../utils/apiResponse');
-const { REWARD_LEVELS } = require('../services/rewardService');
+const { REWARD_LEVELS, getRewardCost } = require('../services/rewardService');
 
 // @desc    Get logged in user's reward info and history
 // @route   GET /api/rewards/my-rewards
@@ -59,18 +59,27 @@ const getLeaderboard = asyncHandler(async (req, res) => {
 // @route   POST /api/rewards/redeem
 // @access  Private
 const redeemReward = asyncHandler(async (req, res) => {
-  const { rewardName, pointsCost } = req.body;
+  const { rewardName } = req.body;
   const user = await User.findById(req.user._id);
 
-  if (user.rewardPoints < pointsCost) {
+  // SECURITY: the server is authoritative for reward prices. The cost is
+  // resolved from the canonical REWARD_CATALOG by rewardName; any
+  // client-supplied pointsCost is deliberately ignored so a forged request
+  // cannot redeem a reward for fewer points than it really costs.
+  const authoritativeCost = getRewardCost(rewardName);
+  if (authoritativeCost === null) {
+    throw new ApiError(400, 'Unknown reward. Please choose a valid reward.');
+  }
+
+  if (user.rewardPoints < authoritativeCost) {
     throw new ApiError(400, 'Insufficient reward points');
   }
 
   // We do not deduct points until admin approval
   const request = await RedemptionRequest.create({
     user: user._id,
-    rewardName,
-    pointsCost
+    rewardName: rewardName.trim(),
+    pointsCost: authoritativeCost
   });
 
   sendSuccess(res, 201, 'Redemption request submitted successfully', { request });

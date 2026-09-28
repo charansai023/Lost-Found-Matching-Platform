@@ -1,5 +1,79 @@
 const ApiError = require('../utils/ApiError');
 
+// ═══════════════════════════════════════════════════════════════
+// Shared security/validation helpers (Phase 1)
+// Single source of truth so controllers don't duplicate logic.
+// ═══════════════════════════════════════════════════════════════
+
+// Escapes user input before it is used inside a MongoDB $regex so that
+// special characters like [ ] ( ) * + ? . \ ^ $ | are treated literally.
+// Without this, `search=[` crashes the endpoint and crafted patterns can
+// trigger expensive regex scans (regex injection).
+const escapeRegex = (text) => {
+  if (typeof text !== 'string') return '';
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+// True only when the value is a well-formed 24-char hex MongoDB ObjectId.
+const isValidObjectId = (id) =>
+  typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
+
+// Throws 400 early for malformed :id params instead of letting Mongoose
+// raise a CastError deeper in the query pipeline.
+const assertValidObjectId = (id, label = 'ID') => {
+  if (!isValidObjectId(id)) {
+    throw new ApiError(400, `Invalid ${label} format`);
+  }
+};
+
+// Rejects dates that fall on a FUTURE CALENDAR DAY using local calendar
+// semantics. Business rule: today → allowed, any previous calendar date →
+// allowed, any future calendar date → rejected.
+//
+// Why not simply `new Date(value) > new Date()`:
+// `YYYY-MM-DD` strings are parsed by JS as UTC *midnight*. For users ahead
+// of UTC (e.g. UTC+5:30) "today" can parse to an instant later than `new
+// Date()` in the early local morning, wrongly rejecting legitimate today
+// reports (the UTC-midnight bug). Conversely, on servers behind UTC the
+// parse can shift the intended day backwards and let "tomorrow" slip
+// through. So the calendar day is read directly from the string when it is
+// in YYYY-MM-DD form (what the frontend date pickers always send), and only
+// falls back to Date components for other formats. The current date is
+// never hardcoded.
+const rejectFutureDate = (value, label = 'Date') => {
+  if (!value) {
+    throw new ApiError(400, `${label} is required`);
+  }
+
+  const valueStr = String(value);
+  let year, month, day;
+
+  const ymdMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(valueStr);
+  if (ymdMatch) {
+    // Frontend always sends YYYY-MM-DD — use the user's intended calendar
+    // day directly, with no timezone interpretation at all.
+    [, year, month, day] = ymdMatch;
+  } else {
+    const parsed = new Date(valueStr);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new ApiError(400, `${label} is not a valid date`);
+    }
+    year = String(parsed.getFullYear());
+    month = String(parsed.getMonth() + 1).padStart(2, '0');
+    day = String(parsed.getDate()).padStart(2, '0');
+  }
+
+  const now = new Date();
+  const inputKey = Number(year) * 10000 + Number(month) * 100 + Number(day);
+  const todayKey =
+    now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+
+  if (inputKey > todayKey) {
+    throw new ApiError(400, `${label} cannot be in the future.`);
+  }
+  return true;
+};
+
 const isEmailAllowed = (email) => {
   const restrictDomain = process.env.RESTRICT_EMAIL_DOMAIN === 'true';
   if (!restrictDomain) return true;
@@ -147,4 +221,9 @@ module.exports = {
   validateVerifyOTP,
   validateResetPassword,
   validateItem,
+  // Shared helpers (Phase 1)
+  escapeRegex,
+  isValidObjectId,
+  assertValidObjectId,
+  rejectFutureDate,
 };

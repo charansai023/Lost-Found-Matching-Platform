@@ -9,6 +9,7 @@ const { runAsyncMatching } = require('../services/asyncMatchingQueue');
 const { getSearchQuerySynonyms } = require('../services/textEmbeddingService');
 const { createAndSendNotification } = require('../services/socketService');
 const { sendFoundItemReportedEmail } = require('../utils/emailService');
+const { escapeRegex, assertValidObjectId, rejectFutureDate } = require('../middleware/validate');
 
 // @desc    Create a new found item report and automatically run matching
 // @route   POST /api/found
@@ -24,9 +25,10 @@ const createFoundItem = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Item Type, Category, Location, and Date Found are required fields.');
   }
 
-  if (new Date(dateFound) > new Date()) {
-    throw new ApiError(400, 'Date Found cannot be in the future.');
-  }
+  // Timezone-safe future-date rejection: compares calendar days, not raw
+  // timestamps (YYYY-MM-DD inputs used to be parsed as UTC midnight, which
+  // wrongly rejected "today" for users ahead of UTC in the early morning).
+  rejectFutureDate(dateFound, 'Date Found');
 
   if (linkedLostItemId) {
     const linkedLostItem = await LostItem.findById(linkedLostItemId);
@@ -140,22 +142,23 @@ const getFoundItems = asyncHandler(async (req, res) => {
 
   if (search) {
     const synonyms = getSearchQuerySynonyms(search);
+    // Escape every term before $regex use (regex injection prevention).
     const regexTerms = synonyms.map((term) => ({
       $or: [
-        { itemType: { $regex: term, $options: 'i' } },
-        { category: { $regex: term, $options: 'i' } },
-        { description: { $regex: term, $options: 'i' } },
+        { itemType: { $regex: escapeRegex(term), $options: 'i' } },
+        { category: { $regex: escapeRegex(term), $options: 'i' } },
+        { description: { $regex: escapeRegex(term), $options: 'i' } },
       ],
     }));
     filter.$or = regexTerms.flat();
   }
 
   if (category) {
-    filter.category = { $regex: category, $options: 'i' };
+    filter.category = { $regex: escapeRegex(category), $options: 'i' };
   }
 
   if (location) {
-    filter.location = { $regex: location, $options: 'i' };
+    filter.location = { $regex: escapeRegex(location), $options: 'i' };
   }
 
   const pageNumber = Number(page) || 1;
@@ -188,8 +191,10 @@ const getFoundItems = asyncHandler(async (req, res) => {
 // @route   GET /api/found/:id
 // @access  Private
 const getFoundItemById = asyncHandler(async (req, res) => {
-  const foundItemBase = await FoundItem.findById(req.params.id);
+  // Reject malformed ids with a clean 400 before any DB query runs.
+  assertValidObjectId(req.params.id, 'Found item ID');
 
+  const foundItemBase = await FoundItem.findById(req.params.id);
   if (!foundItemBase) {
     throw new ApiError(404, 'Found item not found');
   }
@@ -237,9 +242,8 @@ const updateFoundItem = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Item Type, Category, Location, and Date Found are required fields.');
   }
 
-  if (new Date(req.body.dateFound) > new Date()) {
-    throw new ApiError(400, 'Date Found cannot be in the future.');
-  }
+  // Timezone-safe future-date rejection on updates as well.
+  rejectFutureDate(req.body.dateFound, 'Date Found');
 
   fieldsToUpdate.forEach((field) => {
     if (req.body[field] !== undefined) {

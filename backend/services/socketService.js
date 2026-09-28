@@ -2,35 +2,22 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+// Phase 1: Socket.IO must follow the SAME origin policy as the REST API
+// (single source of truth in config/corsOrigins.js).
+const { corsOriginHandler } = require('../config/corsOrigins');
 
 let io = null;
 
 /**
  * Initializes Socket.IO server with CORS configuration and handshake authentication middleware
  */
-const initSocket = (httpServer) => {
-  io = new Server(httpServer, {
-    cors: {
-      origin: (origin, callback) => {
-        if (!origin || /^http:\/\/localhost(:\d+)?$/.test(origin)) {
-          return callback(null, true);
-        }
-
-        const clientUrls = (process.env.CLIENT_URL || '')
-          .split(',')
-          .map((url) => url.trim())
-          .filter(Boolean);
-
-        if (clientUrls.includes(origin) || /\.vercel\.app$/.test(origin)) {
-          return callback(null, true);
-        }
-
-        callback(new Error('Not allowed by CORS'));
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-    },
-  });
+const initSocket = (httpServer) => {io = new Server(httpServer, {
+cors: {
+origin: corsOriginHandler,
+credentials: true,
+methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+},
+});
 
   // JWT Handshake Authentication Middleware
   io.use(async (socket, next) => {
