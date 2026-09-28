@@ -41,6 +41,21 @@ const matchSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  // Phase 3 provenance: WHICH engine produced imageSimilarityScore.
+  // Controlled vocabulary: 'Gemini' | 'Fallback' | 'Identical File' | 'None'
+  // | 'Legacy' (default = pre-Phase-3 record with unknown provenance —
+  // old documents keep working without any migration).
+  imageEngine: {
+    type: String,
+    enum: ['Gemini', 'Fallback', 'Identical File', 'None', 'Legacy'],
+    default: 'Legacy',
+  },
+  // Why a fallback/none engine was used, e.g. 'Gemini Vision API returned
+  // HTTP 503: ...' or 'GEMINI_API_KEY not configured'. Empty for Gemini.
+  imageEngineReason: {
+    type: String,
+    default: '',
+  },
   matchingStatus: {
     type: String,
     enum: ['processing', 'completed', 'failed'],

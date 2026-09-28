@@ -154,12 +154,82 @@ const extractSemanticEmbedding = (bufferOrPath) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// Gemini failure classification & bounded retry (Phase 3).
+// Transient failures (429 / 5xx / timeouts) are retried a small number of
+// times with exponential backoff. Permanent failures (invalid key, bad
+// request, unsupported model, bad image) fail immediately — retrying
+// them would only waste quota and time.
+// ─────────────────────────────────────────────────────────────────────
+const GEMINI_MAX_ATTEMPTS = 3;          // 1 initial try + 2 retries
+const GEMINI_BACKOFF_BASE_MS = 500;     // 500ms, then 1000ms, then give up
+
+const TRANSIENT_STATUS_CODES = new Set([429, 500, 502, 503]);
+
+// Classifies a Gemini failure as retryable or not.
+// err may be: { statusCode } from an HTTP response, an Error with a
+// timeout/network flag, or anything else (treated as permanent).
+const classifyGeminiFailure = (err) => {
+  if (!err) return 'permanent';
+  if (err.isTimeout || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED') {
+    return 'transient';
+  }
+  if (Number.isInteger(err.statusCode) && TRANSIENT_STATUS_CODES.has(err.statusCode)) {
+    return 'transient';
+  }
+  return 'permanent';
+};
+
+// Sleep helper.
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Runs attemptFn() with bounded retries for TRANSIENT failures only.
+// attemptFn must return a plain value on success and THROW an error object
+// (with statusCode/isTimeout) on failure. Resolves the successful value,
+// or { failed: true, reason } after exhaustion / permanent failure.
+const withGeminiRetries = async (attemptFn, { label = 'Gemini' } = {}) => {
+  let lastReason = 'unknown error';
+  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await attemptFn();
+    } catch (err) {
+      const kind = classifyGeminiFailure(err);
+      lastReason = err && err.statusCode
+        ? `HTTP ${err.statusCode}${err.message ? `: ${err.message}` : ''}`
+        : (err && err.message) || 'unknown error';
+      const isLastAttempt = attempt === GEMINI_MAX_ATTEMPTS;
+      if (kind === 'permanent' || isLastAttempt) {
+        const giveUpReason = kind === 'permanent'
+          ? 'Permanent failure'
+          : `All ${GEMINI_MAX_ATTEMPTS} attempts exhausted`;
+        console.error(`[${label}] ${giveUpReason} — giving up. Last reason: ${lastReason}`);
+        return { failed: true, reason: lastReason, kind };
+      }
+      const backoff = GEMINI_BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
+      console.warn(`[${label}] Transient failure (attempt ${attempt}/${GEMINI_MAX_ATTEMPTS}): ${lastReason} — retrying in ${backoff}ms`);
+      await sleep(backoff);
+    }
+  }
+  return { failed: true, reason: lastReason, kind: 'transient' };
+};
+
+// Maps raw engine strings from this service to the controlled vocabulary
+// persisted on Match documents (Phase 3 provenance).
+const normalizeEngineName = (engineStr) => {
+  if (!engineStr || typeof engineStr !== 'string') return 'Legacy';
+  if (engineStr.startsWith('Gemini')) return 'Gemini';
+  if (engineStr === 'Identical File') return 'Identical File';
+  if (engineStr === 'None') return 'None';
+  return 'Fallback';
+};
+
 /**
- * Google Gemini Vision API Semantic Analyzer
- * Accepts Buffers for image content.
+ * Performs ONE Gemini Vision request. Throws structured errors on HTTP
+ * failures so classifyGeminiFailure can distinguish transient from
+ * permanent problems. Resolves the parsed result object on success.
  */
-const analyzeWithGeminiVision = async (bufferA, bufferB, apiKey) => {
-  return new Promise((resolve) => {
+const attemptGeminiVisionRequest = (bufferA, bufferB, apiKey) => {
+  return new Promise((resolve, reject) => {
     try {
       const fileDataA = bufferA.toString('base64');
       const fileDataB = bufferB.toString('base64');
@@ -211,16 +281,17 @@ Respond ONLY with a valid JSON object in this exact format:
       const req = https.request(options, (res) => {
         let responseData = '';
         res.on('data', (chunk) => { responseData += chunk; });
-        res.on('end', () => {
+        res        .on('end', () => {
           try {
             const parsed = JSON.parse(responseData);
-            // Surface API-level errors (404/429/503 etc.) instead of failing silently.
+            // Surface API-level errors (404/429/503 etc.) as classified
+            // failures instead of failing silently.
             if (parsed.error) {
               console.error(
                 `Gemini Vision API returned HTTP ${res.statusCode}:`,
                 parsed.error.message
               );
-              return resolve(null);
+              return reject({ statusCode: res.statusCode, message: parsed.error.message });
             }
             const textResponse = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
             if (textResponse) {
@@ -233,32 +304,34 @@ Respond ONLY with a valid JSON object in this exact format:
                   detectedObjectB: resJson.detectedObjectB || 'Unknown Object',
                   sameObjectCategory: Boolean(resJson.sameObjectCategory),
                   reasoning: resJson.reasoning || 'Gemini Vision Semantic Match',
-                  engine: 'Gemini Vision AI',
                 });
               }
             }
+            // Empty / malformed model output — deterministic per-pair, so
+            // treated as permanent (no retry) with a clear reason.
+            return reject({ statusCode: 0, message: 'invalid Gemini response' });
           } catch (e) {
             console.error('Failed to parse Gemini Vision API response:', e.message);
+            return reject({ statusCode: 0, message: 'invalid Gemini response' });
           }
-          resolve(null);
         });
       });
 
       req.on('error', (err) => {
         console.error('Gemini Vision request error:', err.message);
-        resolve(null);
+        reject({ statusCode: 0, message: err.message, code: err.code });
       });
 
       req.setTimeout(9000, () => {
         req.destroy();
-        resolve(null);
+        reject({ isTimeout: true, message: 'Gemini Vision request timed out' });
       });
 
       req.write(requestBody);
       req.end();
     } catch (err) {
       console.error('Gemini Vision API execution error:', err.message);
-      resolve(null);
+      reject({ statusCode: 0, message: `request build failed: ${err.message}` });
     }
   });
 };
@@ -266,12 +339,18 @@ Respond ONLY with a valid JSON object in this exact format:
 /**
  * Primary Service Method: Computes semantic image embedding similarity score (0-100%)
  * Works with both Cloudinary URLs and local filesystem image paths.
+ *
+ * Provenance contract (Phase 3): every result carries
+ *   engine         — 'Gemini' | 'Fallback' | 'Identical File' | 'None'
+ *   fallbackReason — why the fallback was used (only on Fallback/None)
+ * so callers can persist WHICH engine produced the score.
  */
 const compareImagesSemantically = async (imagePath1, imagePath2) => {
   if (!imagePath1 || !imagePath2) {
     return {
       similarityScore: 0,
       engine: 'None',
+      fallbackReason: 'Missing image path',
       reasoning: 'Missing image path',
       sameObjectCategory: false,
     };
@@ -293,6 +372,7 @@ const compareImagesSemantically = async (imagePath1, imagePath2) => {
     return {
       similarityScore: 0,
       engine: 'None',
+      fallbackReason: 'Image could not be loaded',
       reasoning: 'Image could not be loaded',
       sameObjectCategory: false,
     };
@@ -300,44 +380,62 @@ const compareImagesSemantically = async (imagePath1, imagePath2) => {
 
   // 1. Prefer Gemini Vision API if GEMINI_API_KEY is available in .env
   const geminiApiKey = process.env.GEMINI_API_KEY;
+  let geminiFailureReason = null;
   if (geminiApiKey) {
-    const geminiResult = await analyzeWithGeminiVision(bufferA, bufferB, geminiApiKey);
-    if (geminiResult && typeof geminiResult.semanticEmbeddingScore === 'number') {
+    const geminiOutcome = await withGeminiRetries(
+      () => attemptGeminiVisionRequest(bufferA, bufferB, geminiApiKey),
+      { label: 'Gemini Vision' }
+    );
+
+    if (!geminiOutcome.failed && typeof geminiOutcome.semanticEmbeddingScore === 'number') {
       return {
-        similarityScore: geminiResult.semanticEmbeddingScore,
-        engine: geminiResult.engine,
-        reasoning: geminiResult.reasoning,
-        sameObjectCategory: geminiResult.sameObjectCategory,
-        detectedObjectA: geminiResult.detectedObjectA,
-        detectedObjectB: geminiResult.detectedObjectB,
+        similarityScore: geminiOutcome.semanticEmbeddingScore,
+        engine: 'Gemini',
+        reasoning: geminiOutcome.reasoning,
+        sameObjectCategory: geminiOutcome.sameObjectCategory,
+        detectedObjectA: geminiOutcome.detectedObjectA,
+        detectedObjectB: geminiOutcome.detectedObjectB,
       };
     }
+
+    // Gemini failed after retries — remember why, then fall back cleanly.
+    geminiFailureReason = geminiOutcome.reason || 'Gemini unavailable';
+    console.warn(`[ImageSimilarity] Falling back to deterministic engine — reason: ${geminiFailureReason}`);
+  } else {
+    geminiFailureReason = 'GEMINI_API_KEY not configured';
   }
 
-  // 2. Secondary Engine: High-Dimensional Semantic Neural Embedding Cosine Similarity
+  // 2. Secondary Engine: deterministic visual-statistics embedding cosine
+  //    similarity. NOT semantic object understanding — provenance is
+  //    explicit so it can never masquerade as a Gemini judgment.
   const embedA = extractSemanticEmbedding(bufferA);
   const embedB = extractSemanticEmbedding(bufferB);
 
   if (!embedA || !embedB) {
     return {
       similarityScore: 0,
-      engine: 'Semantic Embedding Engine',
-      reasoning: 'Could not extract semantic feature embeddings',
+      engine: 'None',
+      fallbackReason: geminiFailureReason,
+      reasoning: 'Could not extract feature embeddings',
       sameObjectCategory: false,
     };
   }
 
   const cosSim = calculateCosineSimilarity(embedA, embedB);
-  
-  // Transform cosine similarity of semantic features into calibrated score (0-100%)
-  let similarityScore = Math.round(cosSim * 100);
-  similarityScore = Math.min(100, Math.max(0, similarityScore));
+
+  // Transform cosine similarity of visual statistics into a CONSERVATIVE
+  // score (0-100%). The mapping is deliberately dampened: this engine only
+  // sees raw byte statistics, so high visual-statistical similarity must
+  // NOT produce Gemini-level confidence.
+  let similarityScore = Math.round(cosSim * 60);
+  similarityScore = Math.min(60, Math.max(0, similarityScore));
 
   return {
     similarityScore,
-    engine: '512D Semantic Embedding Cosine Similarity',
-    reasoning: `Extracted 512D semantic embedding vector with cosine similarity of ${cosSim.toFixed(3)}`,
-    sameObjectCategory: cosSim > 0.85,
+    engine: 'Fallback',
+    fallbackReason: geminiFailureReason,
+    reasoning: `Deterministic visual-statistics similarity (cosine ${cosSim.toFixed(3)}), scaled conservatively. Not semantic AI.`,
+    sameObjectCategory: cosSim > 0.95, // stricter: byte stats, not semantics
   };
 };
 
@@ -347,4 +445,8 @@ module.exports = {
   calculateCosineSimilarity,
   resolveImagePath,
   getImageBuffer,
+  withGeminiRetries,
+  classifyGeminiFailure,
+  normalizeEngineName,
+  GEMINI_MAX_ATTEMPTS,
 };

@@ -124,6 +124,12 @@ const matchLostItemAsync = async (lostItemId) => {
           imageSimilarityScore: matchResult.imageSimilarityScore,
           isAiMatch: matchResult.isAiMatch,
           aiConfidence: matchResult.aiConfidence,
+          // Phase 3 provenance — which engine produced the image score.
+          imageEngine: matchResult.imageEngine,
+          imageEngineReason: matchResult.imageEngineReason,
+          // Phase 3: real brand/color metadata similarity (informational).
+          brandScore: matchResult.brandScore,
+          colorScore: matchResult.colorScore,
           semanticSimilarity: matchResult.semanticSimilarity,
           titleSimilarity: matchResult.titleSimilarity,
           descriptionSimilarity: matchResult.descriptionSimilarity,
@@ -215,6 +221,12 @@ const matchFoundItemAsync = async (foundItemId) => {
           imageSimilarityScore: matchResult.imageSimilarityScore,
           isAiMatch: matchResult.isAiMatch,
           aiConfidence: matchResult.aiConfidence,
+          // Phase 3 provenance — which engine produced the image score.
+          imageEngine: matchResult.imageEngine,
+          imageEngineReason: matchResult.imageEngineReason,
+          // Phase 3: real brand/color metadata similarity (informational).
+          brandScore: matchResult.brandScore,
+          colorScore: matchResult.colorScore,
           semanticSimilarity: matchResult.semanticSimilarity,
           titleSimilarity: matchResult.titleSimilarity,
           descriptionSimilarity: matchResult.descriptionSimilarity,

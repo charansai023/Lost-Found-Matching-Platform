@@ -1,4 +1,4 @@
-const { compareImagesSemantically } = require('./imageSimilarityService');
+const { compareImagesSemantically, normalizeEngineName } = require('./imageSimilarityService');
 const { calculateCosineSimilarity, generateTextEmbedding, normalizeText, SYNONYM_DICTIONARY } = require('./textEmbeddingService');
 
 /**
@@ -20,6 +20,20 @@ const HYBRID_WEIGHTS = {
   category: 0.05,
 };
 
+// Phase 3: engine provenance for the image component.
+// Controlled vocabulary persisted on Match documents:
+//   'Gemini' | 'Fallback' | 'Identical File' | 'None' | 'Legacy'
+// 'Legacy' is the display default for pre-Phase-3 Match records that have
+// no provenance fields (no destructive migration required).
+const IMAGE_ENGINES = ['Gemini', 'Fallback', 'Identical File', 'None', 'Legacy'];
+const LEGACY_ENGINE = 'Legacy';
+
+// Phase 3: conservative ceiling for the deterministic fallback image
+// engine. Byte-statistic similarity is NOT semantic understanding, so its
+// score can never exceed this (Genuine Gemini scores are uncapped). The
+// image service already scales its output to this ceiling.
+const FALLBACK_IMAGE_MAX = 60;
+
 const getMatchThreshold = () => Number(process.env.AI_IMAGE_MATCH_THRESHOLD) || 80;
 
 const MATCH_THRESHOLDS = {
@@ -36,6 +50,11 @@ const getMatchLevel = (score) => {
 const normalize = (value) => {
   return normalizeText(value);
 };
+
+// Image evidence is only "available" for weighting when a real visual score
+// exists (Gemini, deterministic Fallback, or exact Identical File). 'None'
+// (missing/unloadable images) excludes the image weight entirely.
+const imageAvailableFn = (engine) => engine === 'Gemini' || engine === 'Fallback' || engine === 'Identical File';
 
 /**
  * Tokenizes normalized string
@@ -193,23 +212,47 @@ const calculateHybridMatchScore = async (lostItem, foundItem) => {
 
   logs.push(`[Hybrid Engine] Comparing LostItem "${nameA}" vs FoundItem "${nameB}"`);
 
-  // 1. Image Embedding Similarity (60% Weight)
+  // 1. Image Embedding Similarity (60% Weight when available)
+  // Provenance: WHICH engine produced the image score is captured and
+  // propagated so the Match record can answer "Gemini or fallback?".
   let imageSimilarityScore = 0;
   let sameObjectCategory = false;
+  let imageEngine = LEGACY_ENGINE;
+  let imageEngineReason = '';
 
   if (lostItem.image && foundItem.image) {
     const imgResult = await compareImagesSemantically(lostItem.image, foundItem.image);
     imageSimilarityScore = imgResult.similarityScore || 0;
     sameObjectCategory = Boolean(imgResult.sameObjectCategory);
-    logs.push(`[Hybrid Engine] Image Similarity: ${imageSimilarityScore}%`);
+    imageEngine = normalizeEngineName(imgResult.engine);
+    imageEngineReason = imgResult.fallbackReason || '';
+    logs.push(`[Hybrid Engine] Image Similarity: ${imageSimilarityScore}% (engine: ${imageEngine}${imageEngineReason ? ` — ${imageEngineReason}` : ''})`);
+    // 'None' means the images were referenced but could not be loaded —
+    // visual evidence is effectively UNAVAILABLE, so exclude the image
+    // weight below (same policy as reports without images).
+    if (imageEngine === 'None') {
+      logs.push(`[Hybrid Engine] Image evidence unavailable (${imageEngineReason || 'not loadable'}) — excluding image weight from scoring.`);
+    }
   } else {
-    // If one/both items are missing images, default visual similarity to title-based semantic fallback
+    // Phase 3 no-image policy (replaces the old blanket 85% cap):
+    // the image slot answers "how likely are these the same physical
+    // object?". With no image evidence, the best available proxy is the
+    // itemType+category identity match — substituted into the slot and
+    // CAPPED AT 95 so a missing visual confirmation can never produce a
+    // fake perfect 100. Provenance records the substitution explicitly.
+    imageEngine = 'None';
+    imageEngineReason = 'No image — identity substituted from itemType/category metadata';
     const titleA = `${lostItem.itemType || ''} ${lostItem.category || ''}`;
     const titleB = `${foundItem.itemType || ''} ${foundItem.category || ''}`;
-    imageSimilarityScore = tokenMatchScore(titleA, titleB);
+    imageSimilarityScore = Math.min(95, tokenMatchScore(titleA, titleB));
     sameObjectCategory = evaluateCategoryCompatibility(lostItem, foundItem) >= 75;
-    logs.push(`[Hybrid Engine] Image Similarity: ${imageSimilarityScore}% (Visual embedding derived from text)`);
+    logs.push(`[Hybrid Engine] Image Similarity: ${imageSimilarityScore}% (identity substituted from text metadata, capped at 95 — no visual confirmation available)`);
   }
+
+  // Weight availability flag (Gemini / Fallback / Identical File provide a
+  // real visual score; 'None' means the slot carries substituted identity
+  // evidence instead — recorded for provenance, weights unchanged).
+  const imageAvailable = imageAvailableFn(imageEngine);
 
   // 2. Title Similarity (15% Weight)
   let titleSimilarity = 0;
@@ -245,11 +288,21 @@ const calculateHybridMatchScore = async (lostItem, foundItem) => {
   const categoryScore = evaluateCategoryCompatibility(lostItem, foundItem);
   logs.push(`[Hybrid Engine] Category Score: ${categoryScore}%`);
 
+  // 6. Brand & Color similarity (Phase 3: actually calculated with the
+  // existing evaluators — previously defined but never invoked, leaving
+  // brandScore/colorScore at schema defaults and the UI showing fake 50s).
+  // These are METADATA-ONLY: informational scores for the admin breakdown
+  // UI, deliberately NOT part of the weighted final confidence.
+  const brandScore = evaluateBrandSimilarity(lostItem.brand, foundItem.brand);
+  const colorScore = evaluateColorSimilarity(lostItem.color, foundItem.color);
+  logs.push(`[Hybrid Engine] Brand Score: ${brandScore}%, Color Score: ${colorScore}% (metadata-only, not weighted)`);
+
   // Calculate Overall Text & Semantic Similarity
   const overallTextSimilarity = Math.round((titleSimilarity * 0.15 + descriptionSimilarity * 0.15 + locationSimilarity * 0.05) / 0.35);
   const semanticSimilarity = overallTextSimilarity;
 
-  // Weighted score combo
+  // Weighted score combo — Phase 3: the overall confidence is ALWAYS the
+  // combined weighted evidence (60/15/15/5/5), never the image-only score.
   let rawScore =
     HYBRID_WEIGHTS.image * imageSimilarityScore +
     HYBRID_WEIGHTS.title * titleSimilarity +
@@ -258,17 +311,13 @@ const calculateHybridMatchScore = async (lostItem, foundItem) => {
     HYBRID_WEIGHTS.category * categoryScore;
 
   rawScore = Math.round(rawScore);
-  logs.push(`[Hybrid Engine] Raw Weighted Match Score: ${rawScore}%`);
+  logs.push(`[Hybrid Engine] Weighted Match Score: ${rawScore}% (weights: image 60%, title 15%, desc 15%, loc 5%, cat 5%)`);
 
-  // Smart Category Validation & Caps (Requirement 6 & 7)
+  // Smart Category Validation & Caps (Requirement 6 & 7) — Phase 3 keeps
+  // ALL category safeguards. The old blanket no-image 85% cap is REPLACED
+  // by the principled weight-normalization above (strong text evidence can
+  // reach high confidence; missing evidence cannot be faked).
   let finalConfidenceScore = rawScore;
-
-  if (!lostItem.image || !foundItem.image) {
-    if (finalConfidenceScore > 85) {
-      logs.push(`[Hybrid Engine] Missing image cap: Capped from ${finalConfidenceScore}% down to 85%.`);
-      finalConfidenceScore = 85;
-    }
-  }
 
   if (categoryScore === 0) {
     if (!sameObjectCategory) {
@@ -333,10 +382,15 @@ const calculateHybridMatchScore = async (lostItem, foundItem) => {
     descriptionSimilarity,
     locationSimilarity,
     categoryScore,
+    brandScore,
+    colorScore,
     overallTextSimilarity,
     finalConfidenceScore,
+    // Phase 3 provenance fields
+    imageEngine,
+    imageEngineReason,
     matchingMethod: 'Hybrid AI Engine',
-    matchingVersion: 'v2',
+    matchingVersion: 'v3',
     explanation,
     logs,
   };
@@ -389,4 +443,7 @@ module.exports = {
   getMatchLevel,
   getMatchThreshold,
   MATCH_THRESHOLDS,
+  HYBRID_WEIGHTS,
+  IMAGE_ENGINES,
+  FALLBACK_IMAGE_MAX,
 };

@@ -19,12 +19,21 @@ const AiMatchAnalysis = ({ match }) => {
     semanticSimilarity = 0,
     locationSimilarity = 0,
     categoryScore = 0,
-    brandScore = 50,
-    colorScore = 50,
+    // Phase 3: real calculated values (no fake defaults — a missing score
+    // shows as 0/Not compared instead of pretending 50%).
+    brandScore = 0,
+    colorScore = 0,
     textScore = 0,
     explanation = '',
     matchingMethod = '',
+    // Phase 3 provenance: which engine produced the image similarity.
+    imageEngine = 'Legacy',
+    imageEngineReason = '',
   } = match;
+
+  // Legacy records (pre-Phase-3) have no provenance — display 'Unavailable'
+  // instead of crashing or inventing an engine.
+  const engineLabel = imageEngine === 'Legacy' ? 'Unavailable (legacy record)' : imageEngine;
 
   // Retrieve text similarity score (prioritizing overallTextSimilarity or semanticSimilarity)
   const textSimilarity = typeof overallTextSimilarity === 'number' ? overallTextSimilarity : semanticSimilarity;
@@ -65,13 +74,30 @@ const AiMatchAnalysis = ({ match }) => {
 
   const confidence = getConfidenceDetails(score);
 
+  // Honest row label for the image component depending on the engine that
+  // produced it (Phase 3 provenance).
+  const imageRowLabel =
+    imageEngine === 'Gemini' || imageEngine === 'Identical File'
+      ? '🖼️ Image Similarity (AI Vision)'
+      : imageEngine === 'Fallback'
+        ? '🖼️ Image Statistics (deterministic fallback)'
+        : imageEngine === 'None'
+          ? '🧩 Item Identity (no image)'
+          : '🖼️ Image Similarity';
+
   // 2. Determine checklist items
   const checks = [];
   const sameCategory = categoryScore >= 80;
   const sameBrand = (lostItem?.brand && foundItem?.brand && brandScore >= 70);
   const sameColor = (lostItem?.color && foundItem?.color && colorScore >= 70);
   const similarDescription = textScore >= 50 || (match.descriptionSimilarity >= 50);
-  const similarImages = imageSimilarityScore >= 50;
+  // Phase 3: 'Similar Images' only when a real visual engine (Gemini or an
+  // exact identical file) scored >= 50. Deterministic fallback statistics
+  // are labelled honestly; no-image matches cannot claim image similarity.
+  const hasRealImageEngine = imageEngine === 'Gemini' || imageEngine === 'Identical File';
+  const isFallbackImageEngine = imageEngine === 'Fallback';
+  const similarImages = hasRealImageEngine && imageSimilarityScore >= 50;
+  const similarFallbackImages = isFallbackImageEngine && imageSimilarityScore >= 50;
   const similarLocation = locationSimilarity >= 70;
 
   if (sameCategory) checks.push('Category Match');
@@ -79,7 +105,8 @@ const AiMatchAnalysis = ({ match }) => {
   if (sameBrand) checks.push('Same Brand');
   if (sameColor) checks.push('Same Color');
   if (similarDescription) checks.push('Similar Description');
-  if (similarImages) checks.push('Similar Images');
+  if (similarImages) checks.push('Similar Images (AI Vision)');
+  if (similarFallbackImages) checks.push('Similar Image Statistics (deterministic)');
   if (similarLocation) checks.push('Similar Location');
 
   return (
@@ -90,6 +117,13 @@ const AiMatchAnalysis = ({ match }) => {
           <span className="ai-match-header__title">🤖 AI Match Analysis</span>
           <span className="ai-match-header__method">
             Method: {matchingMethod || 'Hybrid AI Engine'}
+          </span>
+          <span
+            className="ai-match-header__method"
+            title={imageEngineReason || undefined}
+          >
+            Image Engine: {engineLabel}
+            {imageEngine === 'Fallback' && imageEngineReason ? ` — ${imageEngineReason}` : ''}
           </span>
         </div>
         <button
@@ -118,7 +152,7 @@ const AiMatchAnalysis = ({ match }) => {
             <div className="breakdown-list">
               <div className="breakdown-item">
                 <div className="breakdown-label">
-                  <span>🖼️ Image Similarity</span>
+                  <span>{imageRowLabel}</span>
                   <span>{imageSimilarityScore}%</span>
                 </div>
                 <div className="progress-bar-bg">
@@ -160,7 +194,7 @@ const AiMatchAnalysis = ({ match }) => {
                 <div className="breakdown-item">
                   <div className="breakdown-label">
                     <span>🏷️ Brand Similarity</span>
-                    <span>{brandScore}%</span>
+                    <span>{brandScore > 0 ? `${brandScore}%` : 'Not compared'}</span>
                   </div>
                   <div className="progress-bar-bg">
                     <div className="progress-bar-fill brand-fill" style={{ width: `${brandScore}%` }}></div>
@@ -172,7 +206,7 @@ const AiMatchAnalysis = ({ match }) => {
                 <div className="breakdown-item">
                   <div className="breakdown-label">
                     <span>🎨 Color Similarity</span>
-                    <span>{colorScore}%</span>
+                    <span>{colorScore > 0 ? `${colorScore}%` : 'Not compared'}</span>
                   </div>
                   <div className="progress-bar-bg">
                     <div className="progress-bar-fill color-fill" style={{ width: `${colorScore}%` }}></div>
