@@ -626,25 +626,58 @@ const markClaimReturned = asyncHandler(async (req, res) => {
 // @desc    Get platform-wide statistics for the admin dashboard
 // @route   GET /api/admin/stats
 // @access  Private/Admin
+// Phase 4: every metric has ONE source of truth — Claims for claim
+// metrics, Matches for AI/match metrics, and RECOVERY counted from the
+// distinct LostItems actually returned (owner-centric), so a single
+// real-world recovery is never double-counted through both Claim and
+// Match. Percentages are computed server-side from database data.
 const getPlatformStats = asyncHandler(async (req, res) => {
   const [
     totalUsers, totalLost, totalFound, totalMatches,
-    verifiedMatches, returnedMatches, highMatches, pendingMatches, totalClaims, pendingClaims, aiMatches,
+    verifiedMatches, returnedMatches, highMatches, pendingMatches, aiMatches,
+    totalClaims, pendingClaims, verifiedClaims, rejectedClaims, returnedClaims,
+    returnedLostItemIds,
+    geminiMatches, fallbackMatches, identicalFileMatches, noneEngineMatches, legacyEngineMatches,
+    avgMatchConfidenceAgg,
   ] = await Promise.all([
     User.countDocuments(),
     LostItem.countDocuments(),
     FoundItem.countDocuments(),
     Match.countDocuments(),
+    // Match metrics — source of truth: Match collection
     Match.countDocuments({ status: 'Verified' }),
     Match.countDocuments({ status: 'Returned' }),
     Match.countDocuments({ matchLevel: 'High Match' }),
     Match.countDocuments({ status: 'Pending' }),
+    Match.countDocuments({ $or: [{ isAiMatch: true }, { imageSimilarityScore: { $gte: 80 } }] }),
+    // Claim metrics — source of truth: Claim collection
     Claim.countDocuments(),
     Claim.countDocuments({ status: 'pending' }),
-    Match.countDocuments({ $or: [{ isAiMatch: true }, { imageSimilarityScore: { $gte: 80 } }] }),
+    Claim.countDocuments({ status: 'verified' }),
+    Claim.countDocuments({ status: 'rejected' }),
+    Claim.countDocuments({ status: 'returned' }),
+    // Recovery: DISTINCT lost items actually returned (not Claim rows, not
+    // Match rows — a recovery recorded in both is still ONE item).
+    LostItem.distinct('_id', { status: 'Returned' }),
+    // AI engine provenance breakdown (Phase 3 fields)
+    Match.countDocuments({ imageEngine: 'Gemini' }),
+    Match.countDocuments({ imageEngine: 'Fallback' }),
+    Match.countDocuments({ imageEngine: 'Identical File' }),
+    Match.countDocuments({ imageEngine: 'None' }),
+    Match.countDocuments({ imageEngine: 'Legacy' }),
+    // Server-computed average confidence across ALL matches (not just a
+    // frontend page of results).
+    Match.aggregate([{ $group: { _id: null, avg: { $avg: '$score' } } }]),
   ]);
 
+  const recoveredItems = returnedLostItemIds.length;
+  const recoveryRate = totalLost > 0 ? Math.round((recoveredItems / totalLost) * 100) : 0;
+  const avgMatchConfidence = avgMatchConfidenceAgg.length
+    ? Math.round(avgMatchConfidenceAgg[0].avg || 0)
+    : 0;
+
   sendSuccess(res, 200, 'Platform statistics fetched successfully', {
+    // Legacy keys preserved for compatibility
     totalUsers,
     totalLost,
     totalFound,
@@ -656,6 +689,20 @@ const getPlatformStats = asyncHandler(async (req, res) => {
     totalClaims,
     pendingClaims,
     aiMatches,
+    // Phase 4: claim source-of-truth metrics
+    verifiedClaims,
+    rejectedClaims,
+    returnedClaims,
+    // Phase 4: recovery (distinct returned lost items)
+    recoveredItems,
+    recoveryRate,
+    // Phase 4: AI engine provenance metrics
+    geminiMatches,
+    fallbackMatches,
+    identicalFileMatches,
+    noneEngineMatches,
+    legacyEngineMatches,
+    avgMatchConfidence,
   });
 });
 

@@ -41,7 +41,8 @@ const Register = () => {
 
     try {
       await register(name, email, password);
-      navigate('/dashboard');
+      // New students land on their reports hub (no /dashboard route exists).
+      navigate('/my-reports');
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {

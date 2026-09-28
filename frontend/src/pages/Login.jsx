@@ -20,7 +20,8 @@ const Login = () => {
     try {
       const result = await login(email, password);
       const role = result?.data?.user?.role;
-      navigate(role === 'admin' ? '/admin' : '/dashboard');
+      // Students land on their reports hub (no /dashboard route exists).
+      navigate(role === 'admin' ? '/admin' : '/my-reports');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
     } finally {

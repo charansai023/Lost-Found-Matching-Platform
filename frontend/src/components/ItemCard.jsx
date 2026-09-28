@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import StatusBadge from './StatusBadge';
+import SafeImage from './SafeImage';
 import './ItemCard.css';
 
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace('/api', '');
@@ -20,11 +21,12 @@ const ItemCard = ({ item, type = 'lost', onEdit, onDelete, showActions = false }
     <div className="item-card">
       <Link to={detailPath} className="item-card__link">
         <div className="item-card__image-wrapper">
-          {imageUrl ? (
-            <img src={imageUrl} alt={item.itemType || item.category} className="item-card__image" />
-          ) : (
-            <div className="item-card__image-placeholder">No Image</div>
-          )}
+          <SafeImage
+            src={item.image}
+            alt={item.itemType || item.category}
+            className="item-card__image"
+            placeholderClassName="item-card__image-placeholder"
+          />
           <span className="item-card__status-overlay">
             <StatusBadge status={item.status} />
             {item.matchingStatus === 'processing' && (

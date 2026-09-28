@@ -18,7 +18,8 @@ const AdminRoute = ({ children }) => {
   }
 
   if (user?.role !== 'admin') {
-    return <Navigate to="/dashboard" replace />;
+    // Non-admins are sent to their reports hub (/dashboard has no route).
+    return <Navigate to="/my-reports" replace />;
   }
 
   return children;

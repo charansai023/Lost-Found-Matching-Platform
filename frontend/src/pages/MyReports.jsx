@@ -6,10 +6,12 @@ import { deleteLostItem } from '../services/lostItemService';
 import { deleteFoundItem } from '../services/foundItemService';
 import StatusBadge from '../components/StatusBadge';
 import Loader from '../components/Loader';
+import SafeImage from '../components/SafeImage';
 import './MyReports.css';
 
-const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace('/api', '');
-const imageUrl = (path) => (path ? (path.startsWith('http') ? path : `${API_ORIGIN}${path}`) : null);
+// Image rendering goes through SafeImage (resolves URLs, graceful
+// placeholder for legacy /uploads paths and load failures).
+
 
 const MATCH_LEVEL_COLOR = {
   'High Match': { bg: '#dcfce7', color: '#15803d' },
@@ -184,11 +186,12 @@ const MyReports = () => {
                   <div key={item._id} className="my-report-card">
                     {/* Image */}
                     <div className="my-report-card__image-wrapper">
-                      {imageUrl(item.image) ? (
-                        <img src={imageUrl(item.image)} alt={item.itemType} className="my-report-card__image" />
-                      ) : (
-                        <div className="my-report-card__image-placeholder">No Image</div>
-                      )}
+                      <SafeImage
+                        src={item.image}
+                        alt={item.itemType}
+                        className="my-report-card__image"
+                        placeholderClassName="my-report-card__image-placeholder"
+                      />
                       <div className="my-report-card__status-overlay">
                         <StatusBadge status={item.status} />
                       </div>
@@ -264,13 +267,11 @@ const MyReports = () => {
                 <h2>{selectedItem.itemType || selectedItem.category}</h2>
                 <StatusBadge status={selectedItem.status} size="md" />
               </div>
-              {imageUrl(selectedItem.image) && (
-                <img
-                  src={imageUrl(selectedItem.image)}
-                  alt={selectedItem.itemType}
-                  className="detail-modal__image"
-                />
-              )}
+              <SafeImage
+                src={selectedItem.image}
+                alt={selectedItem.itemType}
+                className="detail-modal__image"
+              />
             </div>
 
             <div className="detail-modal__body">

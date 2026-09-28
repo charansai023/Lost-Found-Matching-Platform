@@ -18,14 +18,14 @@ import {
 } from '../services/adminService';
 import { fetchNotifications, markAsRead, markAllRead, deleteNotification } from '../services/notificationService';
 import StatusBadge from '../components/StatusBadge';
+import SafeImage from '../components/SafeImage';
 import MatchBadge from '../components/MatchBadge';
 import AiMatchAnalysis from '../components/AiMatchAnalysis';
 import Loader from '../components/Loader';
 import useAuth from '../hooks/useAuth';
 import './AdminDashboard.css';
 
-const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace('/api', '');
-const imageUrl = (path) => (path ? (path.startsWith('http') ? path : `${API_ORIGIN}${path}`) : null);
+// Image rendering goes through SafeImage (graceful legacy-image handling).
 
 // ─────────────────────────────────────────────
 // Sub-pages rendered inside the admin layout
@@ -35,18 +35,18 @@ const Overview = ({ stats, matches, lostItems, foundItems, claims, onVerify, onR
   const navigate = useNavigate();
   if (!stats) return <Loader />;
 
-  // Calculate AI stats from matches
+  // ── Phase 4 analytics: server-computed stats are the source of truth.
+  // Claim metrics come from the Claim collection, match metrics from the
+  // Match collection, and recovery from distinct returned lost items —
+  // never mixed, never double-counted.
+  const recoveryRate = stats.recoveryRate ?? 0;
+  const approvedClaims = stats.verifiedClaims ?? 0;
+  const rejectedClaims = stats.rejectedClaims ?? 0;
+  const returnedClaims = stats.returnedClaims ?? 0;
+  const totalClaims = stats.totalClaims ?? 0;
+  const approvedClaimsRate = totalClaims > 0 ? Math.round((approvedClaims / totalClaims) * 100) : 0;
+  const avgConfidence = stats.avgMatchConfidence ?? 0;
   const aiMatchesList = matches.filter(m => m.isAiMatch || m.matchingMethod === 'Hybrid AI Engine');
-  const imageMatches = aiMatchesList.filter(m => m.imageSimilarityScore > 0).length;
-  const textMatches = aiMatchesList.filter(m => m.descriptionSimilarity > 0 || m.textScore > 0).length;
-  const semanticMatches = aiMatchesList.filter(m => m.semanticSimilarity > 0 || m.overallTextSimilarity > 0).length;
-  const avgConfidence = aiMatchesList.length > 0 
-    ? Math.round(aiMatchesList.reduce((acc, m) => acc + (m.score || 0), 0) / aiMatchesList.length)
-    : 0;
-
-  const recoveryRate = stats.totalLost > 0 ? Math.round((stats.returnedMatches / stats.totalLost) * 100) : 0;
-  const approvedClaims = stats.verifiedMatches || 0; // Approximation based on existing stats
-  const totalClaims = stats.pendingMatches + stats.verifiedMatches;
 
   return (
     <div className="admin-overview-container">
@@ -69,17 +69,17 @@ const Overview = ({ stats, matches, lostItems, foundItems, claims, onVerify, onR
         </div>
         <div className="stat-card stat-card--highlight">
           <span className="stat-card__icon">⏳</span>
-          <span className="stat-card__value">{stats.pendingMatches}</span>
+          <span className="stat-card__value">{stats.pendingClaims ?? 0}</span>
           <span className="stat-card__label">Pending Claims</span>
         </div>
         <div className="stat-card stat-card--success">
           <span className="stat-card__icon">✅</span>
-          <span className="stat-card__value">{stats.verifiedMatches}</span>
+          <span className="stat-card__value">{approvedClaims}</span>
           <span className="stat-card__label">Approved Claims</span>
         </div>
         <div className="stat-card stat-card--danger">
           <span className="stat-card__icon">❌</span>
-          <span className="stat-card__value">{stats.totalMatches - stats.verifiedMatches - stats.pendingMatches}</span>
+          <span className="stat-card__value">{rejectedClaims}</span>
           <span className="stat-card__label">Rejected Claims</span>
         </div>
         <div className="stat-card stat-card--info">
@@ -109,12 +109,12 @@ const Overview = ({ stats, matches, lostItems, foundItems, claims, onVerify, onR
           <div className="progress-wrapper">
             <div className="progress-header">
               <span>Approved Claims Rate</span>
-              <span>{totalClaims > 0 ? Math.round((approvedClaims / totalClaims) * 100) : 0}%</span>
+              <span>{approvedClaimsRate}%</span>
             </div>
             <div className="progress-bar-bg">
               <div 
                 className="progress-bar-fill progress-bar-fill--green" 
-                style={{ width: `${totalClaims > 0 ? (approvedClaims / totalClaims) * 100 : 0}%` }}
+                style={{ width: `${approvedClaimsRate}%` }}
               ></div>
             </div>
           </div>
@@ -142,16 +142,16 @@ const Overview = ({ stats, matches, lostItems, foundItems, claims, onVerify, onR
               <span className="ai-stat-lbl">Total AI Matches</span>
             </div>
             <div className="ai-stat">
-              <span className="ai-stat-val">{imageMatches}</span>
-              <span className="ai-stat-lbl">Image Matches</span>
+              <span className="ai-stat-val">{stats.geminiMatches ?? 0}</span>
+              <span className="ai-stat-lbl">Gemini Vision</span>
             </div>
             <div className="ai-stat">
-              <span className="ai-stat-val">{textMatches}</span>
-              <span className="ai-stat-lbl">Text Matches</span>
+              <span className="ai-stat-val">{stats.fallbackMatches ?? 0}</span>
+              <span className="ai-stat-lbl">Fallback Engine</span>
             </div>
             <div className="ai-stat">
-              <span className="ai-stat-val">{semanticMatches}</span>
-              <span className="ai-stat-lbl">Semantic Matches</span>
+              <span className="ai-stat-val">{(stats.identicalFileMatches ?? 0) + (stats.noneEngineMatches ?? 0) + (stats.legacyEngineMatches ?? 0)}</span>
+              <span className="ai-stat-lbl">Identical / No-Image / Legacy</span>
             </div>
             <div className="ai-stat ai-stat--full">
               <span className="ai-stat-val">{avgConfidence}%</span>
@@ -469,11 +469,12 @@ const MatchCard = ({ match, onVerify, onReject, onMarkReturned }) => {
             {/* LEFT — Lost Item */}
             <div className="admin-panel">
               <div className="admin-panel__label admin-panel__label--lost">📋 Lost Report</div>
-              {imageUrl(lostItem?.image) ? (
-                <img src={imageUrl(lostItem.image)} alt="" className="admin-panel__image" />
-              ) : (
-                <div className="admin-panel__image-placeholder">No Image</div>
-              )}
+              <SafeImage
+                src={lostItem?.image}
+                alt={lostItem?.itemType || ''}
+                className="admin-panel__image"
+                placeholderClassName="admin-panel__image-placeholder"
+              />
               <div className="admin-panel__info-grid">
                 <span className="admin-panel__key">Owner</span>
                 <span className="admin-panel__val">{lostItem?.user?.name}</span>
@@ -604,11 +605,12 @@ const MatchCard = ({ match, onVerify, onReject, onMarkReturned }) => {
             {/* RIGHT — Found Item */}
             <div className="admin-panel">
               <div className="admin-panel__label admin-panel__label--found">📦 Found Report</div>
-              {imageUrl(foundItem?.image) ? (
-                <img src={imageUrl(foundItem.image)} alt="" className="admin-panel__image" />
-              ) : (
-                <div className="admin-panel__image-placeholder">No Image</div>
-              )}
+              <SafeImage
+                src={foundItem?.image}
+                alt={foundItem?.itemType || ''}
+                className="admin-panel__image"
+                placeholderClassName="admin-panel__image-placeholder"
+              />
               <div className="admin-panel__info-grid">
                 <span className="admin-panel__key">Finder</span>
                 <span className="admin-panel__val">{foundItem?.user?.name}</span>

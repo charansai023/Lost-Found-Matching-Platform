@@ -5,9 +5,9 @@ import useAuth from '../hooks/useAuth';
 import StatusBadge from '../components/StatusBadge';
 import Loader from '../components/Loader';
 import IFoundThisItemModal from '../components/IFoundThisItemModal';
+import SafeImage from '../components/SafeImage';
 import './ItemDetail.css';
 
-const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace('/api', '');
 
 const LostItemDetail = () => {
   const { id } = useParams();
@@ -43,7 +43,6 @@ const LostItemDetail = () => {
     );
   }
 
-  const imageUrl = item.image ? (item.image.startsWith('http') ? item.image : `${API_ORIGIN}${item.image}`) : null;
 
   return (
     <div className="item-detail-page">
@@ -54,11 +53,12 @@ const LostItemDetail = () => {
       <div className="item-detail-card">
         {/* Image */}
         <div className="item-detail__image-wrapper">
-          {imageUrl ? (
-            <img src={imageUrl} alt={item.itemType || item.category} className="item-detail__image" />
-          ) : (
-            <div className="item-detail__image-placeholder">No Image Available</div>
-          )}
+          <SafeImage
+            src={item?.image}
+            alt={item?.itemType || item?.category}
+            className="item-detail__image"
+            placeholderClassName="item-detail__image-placeholder"
+          />
           <div className="item-detail__status-overlay">
             <StatusBadge status={item.status} size="md" />
           </div>
