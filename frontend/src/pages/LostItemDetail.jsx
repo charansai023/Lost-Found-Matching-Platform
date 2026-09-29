@@ -43,6 +43,17 @@ const LostItemDetail = () => {
     );
   }
 
+  // The owner/reporter of a lost item cannot report it as found themselves —
+  // the backend rejects this ("You cannot report finding an item that you
+  // originally reported as lost"), so hide the action entirely for them.
+  // Auth responses expose the user's id as `id` (see authController), while a
+  // populated item.user exposes `_id` — handle both shapes when comparing.
+  const currentUserId = user?.id || user?._id;
+  const isOwner = Boolean(
+    currentUserId &&
+      item?.user &&
+      String(item.user?._id || item.user) === String(currentUserId)
+  );
 
   return (
     <div className="item-detail-page">
@@ -119,24 +130,20 @@ const LostItemDetail = () => {
             </div>
           )}
 
-          <div className="item-detail__action-section">
-            <div className="item-detail__action-info">
-              <strong>Did you find this item?</strong>
-              <p>Click below to report it found. We'll automatically link it to this report and notify the admin.</p>
-            </div>
-            {(user && (item.user === user._id || item.user?._id === user._id)) ? (
-               <button className="btn btn--secondary item-detail__action-btn" disabled>
-                 This is your reported item
-               </button>
-            ) : (
+          {!isOwner && (
+            <div className="item-detail__action-section">
+              <div className="item-detail__action-info">
+                <strong>Did you find this item?</strong>
+                <p>Click below to report it found. We'll automatically link it to this report and notify the admin.</p>
+              </div>
               <button
                 className="btn btn--primary item-detail__action-btn"
                 onClick={() => setShowModal(true)}
               >
                 🔍 I Found This Item
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
